@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDA AI MAPPING SYSTEM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-indigo: #6366f1;
+            --neon-cyan: #06b6d4;
+            --neon-emerald: #10b981;
+            --neon-rose: #f43f5e;
+            --bg-dark: #020617;
+        }
+        body { 
+            background-color: var(--bg-dark); 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+        .font-cyber { font-family: 'Orbitron', sans-serif; }
+
+        /* Hiệu ứng Glassmorphism */
+        .glass-panel { 
+            background: rgba(15, 23, 42, 0.6); 
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(99, 102, 241, 0.2); 
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Viền Neon chạy xung quanh */
+        .neon-border {
+            position: relative;
+            border: 1px solid var(--neon-indigo);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+        }
+        .neon-border::before {
+            content: "";
+            position: absolute;
+            top: -2px; left: -2px; right: -2px; bottom: -2px;
+            border: 2px solid var(--neon-indigo);
+            border-radius: inherit;
+            animation: neon-pulse 2s infinite alternate;
+            pointer-events: none;
+        }
+        @keyframes neon-pulse {
+            from { opacity: 0.3; box-shadow: 0 0 5px var(--neon-indigo); }
+            to { opacity: 1; box-shadow: 0 0 20px var(--neon-indigo); }
+        }
+
+        /* Hiệu ứng nhấp nháy đỏ cho mã trùng */
+        .duplicate-alert {
+            background: rgba(244, 63, 94, 0.2) !important;
+            animation: alert-flash 0.8s infinite alternate;
+            border-left: 4px solid var(--neon-rose) !important;
+        }
+        @keyframes alert-flash {
+            from { box-shadow: inset 0 0 0px var(--neon-rose); }
+            to { box-shadow: inset 0 0 15px var(--neon-rose); }
+        }
+
+        .scan-input { 
+            font-family: 'Orbitron', sans-serif;
+            background: rgba(0, 0, 0, 0.4) !important;
+            color: var(--neon-cyan) !important;
+            text-shadow: 0 0 10px var(--neon-cyan);
+        }
+
+        .mode-active { 
+            background: linear-gradient(135deg, var(--neon-indigo), #4338ca) !important; 
+            color: white !important; 
+            box-shadow: 0 0 15px var(--neon-indigo);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body class="p-4 min-h-screen flex items-center justify-center">
+
+    <div class="max-w-lg w-full glass-panel rounded-[32px] overflow-hidden border-t-4 border-indigo-500 transition-all duration-500">
+        <!-- Header Futuristic -->
+        <div class="p-6 text-center relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+                <div class="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-[radial-gradient(circle,var(--neon-indigo)_1px,transparent_1px)] [background-size:20px_20px]"></div>
+            </div>
+            <h1 class="font-cyber text-2xl font-black tracking-widest text-white mb-1">PDA AI MAPPING</h1>
+            <div class="flex justify-center items-center gap-2">
+                <span class="h-1 w-1 bg-indigo-500 rounded-full animate-ping"></span>
+                <p class="text-[10px] uppercase tracking-[0.3em] text-indigo-400 font-bold">Core System Active</p>
+            </div>
+        </div>
+
+        <!-- Mode Switcher -->
+        <div class="px-6 py-4 bg-white/5 border-y border-white/10 flex gap-3">
+            <button id="btnModeLoc" onclick="setMode('location')" class="flex-1 py-3 rounded-xl font-bold border border-white/10 transition-all duration-300 text-xs uppercase tracking-wider">
+                📍 Vị Trí
+            </button>
+            <button id="btnModeTag" onclick="setMode('tag')" class="flex-1 py-3 rounded-xl font-bold border border-white/10 transition-all duration-300 text-xs uppercase tracking-wider">
+                🏷️ Tag ID
+            </button>
+        </div>
+
+        <!-- Location Status Panel -->
+        <div class="px-6 py-4 bg-indigo-900/20 flex justify-between items-center border-b border-indigo-500/30">
+            <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter">Active Bin:</span>
+            <span id="currentLocDisp" class="font-cyber text-lg font-bold text-cyan-400 shadow-cyan-500/50">WAITING...</span>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-8 space-y-6">
+            <div class="relative">
+                <div class="flex justify-between items-center mb-2">
+                    <label id="inputLabel" class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest ml-1">Scanning: LOCATION</label>
+                    <button id="btnUnlock" onclick="setMode('location')" class="hidden text-[10px] text-rose-400 font-bold hover:text-rose-300 transition">🔄 RESET BIN</button>
+                </div>
+                <input type="text" id="barcodeInput" 
+                       class="scan-input w-full p-5 border-2 rounded-2xl focus:outline-none transition-all text-center text-2xl font-bold border-indigo-500/50 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20" 
+                       placeholder="READY TO SCAN..." autofocus>
+            </div>
+
+            <!-- Control Buttons -->
+            <div class="grid grid-cols-2 gap-4">
+                <button id="btnExport" class="bg-emerald-600 text-white py-4 rounded-2xl font-bold hover:bg-emerald-500 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 group">
+                    <span class="group-hover:rotate-12 transition">📥</span> EXPORT XLS
+                </button>
+                <button id="btnClear" class="bg-slate-800 text-slate-400 py-4 rounded-2xl font-bold hover:bg-rose-900 hover:text-white transition-all active:scale-95">
+                    🗑️ PURGE DATA
+                </button>
+            </div>
+        </div>
+
+        <!-- Data Matrix Preview -->
+        <div class="p-6 bg-black/40 border-t border-white/10">
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Data Matrix</span>
+                <span id="count" class="bg-indigo-500/20 text-indigo-400 text-[10px] px-3 py-1 rounded-full font-bold border border-indigo-500/30">0 ITEMS</span>
+            </div>
+            <div class="overflow-x-auto max-h-64 custom-scrollbar">
+                <table class="w-full text-left text-xs font-mono">
+                    <thead class="text-slate-500 border-b border-white/10">
+                        <tr>
+                            <th class="py-3 pl-2">TAG ID</th>
+                            <th class="py-3 text-right pr-2">BIN</th>
+                            <th class="py-3 text-center w-20">ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataList" class="divide-y divide-white/5">
+                        <!-- Data injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const barcodeInput = document.getElementById('barcodeInput');
+        const dataList = document.getElementById('dataList');
+        const countDisp = document.getElementById('count');
+        const locDisp = document.getElementById('currentLocDisp');
+        const inputLabel = document.getElementById('inputLabel');
+        const btnModeLoc = document.getElementById('btnModeLoc');
+        const btnModeTag = document.getElementById('btnModeTag');
+        const btnUnlock = document.getElementById('btnUnlock');
+
+        let currentMode = 'location'; 
+        let currentLocation = localStorage.getItem('pda_current_loc') || 'WAITING...';
+        let scannedData = JSON.parse(localStorage.getItem('pda_mapping_data')) || [];
+
+        function setMode(mode) {
+            currentMode = mode;
+            if (mode === 'location') {
+                btnModeLoc.classList.add('mode-active');
+                btnModeTag.classList.remove('mode-active');
+                inputLabel.innerText = "Scanning: LOCATION";
+                btnUnlock.classList.add('hidden');
+                barcodeInput.style.borderColor = "rgba(99, 102, 241, 0.5)";
+            } else {
+                btnModeTag.classList.add('mode-active');
+                btnModeLoc.classList.remove('mode-active');
+                inputLabel.innerText = "Scanning: TAG ID";
+                btnUnlock.classList.remove('hidden');
+                barcodeInput.style.borderColor = "rgba(16, 185, 129, 0.5)";
+            }
+            barcodeInput.focus();
+        }
+
+        function updateUI() {
+            locDisp.innerText = currentLocation;
+            localStorage.setItem('pda_current_loc', currentLocation);
+
+            dataList.innerHTML = '';
+            scannedData.slice().reverse().forEach((item, index) => {
+                // Tính toán index thực tế trong mảng gốc
+                const realIndex = scannedData.length - 1 - index;
+                
+                // Kiểm tra trùng lặp Tag ID
+                const isDuplicate = scannedData.filter(d => d.tag === item.tag).length > 1;
+                
+                const tr = document.createElement('tr');
+                tr.className = isDuplicate ? 'duplicate-alert' : 'hover:bg-white/5 transition-colors';
+                tr.innerHTML = `
+                    <td class="py-3 pl-2 font-bold ${isDuplicate ? 'text-rose-400' : 'text-cyan-400'}">${item.tag}</td>
+                    <td class="py-3 text-right pr-2 text-slate-300">${item.loc}</td>
+                    <td class="py-3 text-center">
+                        <div class="flex justify-center gap-2">
+                            <button onclick="editItem(${realIndex})" class="text-indigo-400 hover:text-white transition">✏️</button>
+                            <button onclick="deleteItem(${realIndex})" class="text-rose-400 hover:text-white transition">🗑️</button>
+                        </div>
+                    </td>
+                `;
+                dataList.appendChild(tr);
+            });
+            
+            countDisp.innerText = `${scannedData.length} ITEMS`;
+            localStorage.setItem('pda_mapping_data', JSON.stringify(scannedData));
+        }
+
+        barcodeInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                const val = barcodeInput.value.trim();
+                if (!val) return;
+
+                if (currentMode === 'location') {
+                    currentLocation = val;
+                    updateUI();
+                    // Tự động chuyển sang chế độ quét Tag ID sau khi quét vị trí
+                    setTimeout(() => setMode('tag'), 300);
+                } else {
+                    if (currentLocation === 'WAITING...') {
+                        alert('⚠️ Vui lòng quét VỊ TRÍ trước khi quét Tag ID!');
+                    } else {
+                        scannedData.push({ tag: val, loc: currentLocation });
+                        updateUI();
+                    }
+                }
+                barcodeInput.value = ''; 
+            }
+        });
+
+        function editItem(index) {
+            const item = scannedData[index];
+            const newTag = prompt('Sửa Tag ID:', item.tag);
+            if (newTag === null) return;
+            const newLoc = prompt('Sửa Vị Trí:', item.loc);
+            if (newLoc === null) return;
+
+            scannedData[index].tag = newTag.trim();
+            scannedData[index].loc = newLoc.trim();
+            updateUI();
+        }
+
+        function deleteItem(index) {
+            if (confirm('Xóa bản ghi này?')) {
+                scannedData.splice(index, 1);
+                updateUI();
+            }
+        }
+
+        document.addEventListener('click', () => barcodeInput.focus());
+
+        // XUẤT FILE EXCEL VỚI ĐỊNH DẠNG TEXT
+        document.getElementById('btnExport').addEventListener('click', () => {
+            if (scannedData.length === 0) {
+                alert('Chưa có dữ liệu để xuất!');
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+            
+            // Tạo mảng dữ liệu cho Excel
+            const data = [
+                ["Tag ID", "Vị Trí"] // Header
+            ];
+
+            scannedData.forEach(item => {
+                // Sử dụng dấu nháy đơn ' ở đầu để ép Excel hiểu là Text
+                data.push([`'${item.tag}`, `'${item.loc}`]);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            
+            // Ép kiểu dữ liệu cho toàn bộ cột A và B là Text (Number Format @)
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let r = range.s.r + 1; r <= range.e.r; r++) {
+                if (ws[XLSX.utils.encode_cell({r: r, c: 0})]) ws[XLSX.utils.encode_cell({r: r, c: 0})].z = '@';
+                if (ws[XLSX.utils.encode_cell({r: r, c: 1})]) ws[XLSX.utils.encode_cell({r: r, c: 1})].z = '@';
+            }
+
+            XLSX.utils.book_append_sheet(wb, ws, "Mapping_Data");
+            XLSX.writeFile(wb, `AI_Mapping_${new Date().getTime()}.xlsx`);
+        });
+
+        document.getElementById('btnClear').addEventListener('click', () => {
+            if (confirm('CẢNH BÁO: Bạn muốn xóa toàn bộ dữ liệu đã quét?')) {
+                scannedData = [];
+                currentLocation = 'WAITING...';
+                updateUI();
+            }
+        });
+
+        // Init
+        setMode('location');
+        updateUI();
+    </script>
+</body>
+</html>

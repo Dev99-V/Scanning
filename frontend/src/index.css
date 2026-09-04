@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Nền tối cho PDA (kế thừa tinh thần scantag.html, viết lại bằng Tailwind). */
+body {
+  background-color: #020617;
+  color: #e2e8f0;
+}

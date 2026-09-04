@@ -1,0 +1,73 @@
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import ReconciliationTable from '../ReconciliationTable';
+import type { ScanRow } from '../../lib/types';
+
+function row(partial: Partial<ScanRow> & { id: string; batch_id: string }): ScanRow {
+  return {
+    qty: 1,
+    bin: 'A1',
+    status: 'ok',
+    resolution: null,
+    is_manual: false,
+    scanned_at: '2026-09-04T00:00:00Z',
+    ...partial,
+  };
+}
+
+describe('ReconciliationTable', () => {
+  it('hiển thị SL/Bin quét cạnh SL/Bin hệ thống', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r1', batch_id: 'B1', qty: 5, bin: 'C4' })]}
+        systemByBatch={new Map([['B1', { qty: 10, bin: 'C9' }]])}
+      />,
+    );
+    const tr = screen.getByTestId('recon-row-r1');
+    expect(tr).toHaveTextContent('B1');
+    expect(tr).toHaveTextContent('5');
+    expect(tr).toHaveTextContent('10');
+    expect(tr).toHaveTextContent('C4');
+    expect(tr).toHaveTextContent('C9');
+  });
+
+  it('đủ 6 cờ trạng thái inline', () => {
+    const statuses = ['pending', 'ok', 'qty_mismatch', 'bin_mismatch', 'not_in_reference', 'duplicate'] as const;
+    render(
+      <ReconciliationTable
+        rows={statuses.map((s, i) => row({ id: `r${i}`, batch_id: `B${i}`, status: s }))}
+        systemByBatch={new Map()}
+      />,
+    );
+    expect(screen.getByText('Chờ')).toBeInTheDocument();
+    expect(screen.getByText('Khớp')).toBeInTheDocument();
+    expect(screen.getByText('Lệch SL')).toBeInTheDocument();
+    expect(screen.getByText('Lệch vị trí')).toBeInTheDocument();
+    expect(screen.getByText('Ngoài hệ thống')).toBeInTheDocument();
+    expect(screen.getByText('Trùng Tag')).toBeInTheDocument();
+  });
+
+  it('KHÔNG liệt kê Tag ID chỉ có trong reference (không hiển thị lại Tag nguồn)', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r1', batch_id: 'SCANNED1' })]}
+        systemByBatch={
+          new Map([
+            ['SCANNED1', { qty: 1, bin: 'A' }],
+            ['SOURCE_ONLY_9', { qty: 99, bin: 'Z9' }],
+          ])
+        }
+      />,
+    );
+    expect(screen.getByText('SCANNED1')).toBeInTheDocument();
+    expect(screen.queryByText('SOURCE_ONLY_9')).not.toBeInTheDocument();
+    expect(screen.queryByText('99')).not.toBeInTheDocument();
+  });
+
+  it('hiển thị — khi không có reference và khi trống', () => {
+    render(<ReconciliationTable rows={[row({ id: 'r1', batch_id: 'BX' })]} systemByBatch={new Map()} />);
+    expect(screen.getByTestId('recon-row-r1')).toHaveTextContent('—');
+    render(<ReconciliationTable rows={[]} systemByBatch={new Map()} />);
+    expect(screen.getByTestId('recon-empty')).toBeInTheDocument();
+  });
+});

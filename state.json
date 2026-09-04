@@ -1,0 +1,124 @@
+{
+  "project_name": "pda-scan-reconciliation-system",
+  "last_updated": "2026-09-04",
+  "read_before_start": [
+    "Plan.md",
+    "Skills.md",
+    "Rules.md",
+    "state.json (chính file này)"
+  ],
+  "decisions_locked": {
+    "stack": {
+      "frontend": "React + TypeScript + Vite + Tailwind",
+      "backend": "Supabase (Postgres + Realtime + Edge Functions + RLS)",
+      "ci_cd": "GitHub Actions"
+    },
+    "reference_source_file": "Stock Balance With Batch.xlsx",
+    "reference_sheet_name": "Stock Balance With Batch",
+    "reference_header_row": 5,
+    "reference_columns": ["Stock Code", "Warehouse", "CREATEDATE", "BATCH", "BIN", "Qty"],
+    "tag_id_field": "BATCH",
+    "repo_split_strategy": "B_mono_repo_subagents",
+    "concurrency_strategy": "db_row_lock_rpc",
+    "frontend_hosting_target": "github_pages",
+    "reference_row_count_policy": "dynamic_dont_hardcode_2721",
+    "cloud_supabase": {
+      "project_ref": "pobabdgyukyufzzxbvsn",
+      "url": "https://pobabdgyukyufzzxbvsn.supabase.co",
+      "keys_location": "frontend/.env.local (gitignored, anon only) + GitHub Secrets ở Phase 7; SERVICE_ROLE chỉ cho Edge Functions secrets/CI, KHÔNG ở frontend, KHÔNG commit",
+      "cloud_state_2026_09_04": "3 bảng đã tồn tại trên cloud nhưng đều 0 dòng (kiểm bằng anon REST, read-only). Chưa rõ DDL cloud có khớp migration local không — Phase 7 cần access token để link + diff/push, reconcile trước khi deploy."
+    }
+  },
+  "current_phase": 8,
+  "phase_status": {
+    "0_read_docs": "completed",
+    "1_schema_migrations": "completed",
+    "2_import_reference_function": "completed",
+    "3_scan_submit_function": "completed",
+    "4_frontend_scan_ui": "completed",
+    "5_frontend_reconciliation_table": "completed",
+    "6_frontend_reference_table_export": "completed",
+    "7_ci_cd": "completed",
+    "8_end_to_end_test": "completed"
+  },
+  "open_questions_pending_user_confirmation": [],
+  "decisions_resolved_2026_09_04": {
+    "repo_split_strategy": "B_mono_repo_subagents — 1 repo, chia /backend (supabase/) + /frontend (src/)",
+    "concurrency_strategy": "db_row_lock_rpc — SELECT ... FOR UPDATE trong 1 RPC plpgsql, lý do xem Learning.md",
+    "frontend_hosting_target": "github_pages — deploy static qua GitHub Actions",
+    "reference_row_count": "KHÔNG khóa cứng 2721 — dữ liệu cập nhật thường xuyên, test Phase 2 phải đếm động: số dòng import == số dòng dữ liệu trong file (từ dòng 6 tới hết, bỏ 4 dòng đầu). Con số 2721 chỉ là giá trị quan sát ở file mẫu ngày 2026-09-04 (đã kiểm chứng bằng openpyxl: 2721 dòng, 0 trống, BATCH unique 12 ký tự)."
+  },
+  "known_data_quirks": [
+    "Dòng 1-4 của sheet là tiêu đề/metadata, phải bỏ qua khi import",
+    "Cột 'Stock Code' và 'BIN' có khoảng trắng đệm cuối chuỗi, cần TRIM khi import",
+    "1 Stock Code có thể có nhiều BATCH khác nhau ở nhiều Warehouse/BIN khác nhau"
+  ],
+  "pending_contract_changes": [],
+  "qc_loop": {
+    "enabled": true,
+    "protocol_doc": "QC_LOOP.md",
+    "driver": "main_agent_via_task_tool",
+    "qc_subagent_type": "general",
+    "max_attempts_per_gate": 5,
+    "current_gate": "done_all_passed",
+    "gates": {
+      "phase1": {
+        "gate_script": "backend/supabase/tests/qc_phase1.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS — QC độc lập chạy lại gate: 8/8 CHECK, exit 0, đối chiếu DDL khớp Plan.md §3",
+        "builder_evidence": "2026-09-04 main run: 8/8 CHECK PASS (tables/PK/columns+no-hard-unique/indexes/RLS+12 policies/realtime/insert-select+duplicate-append/anon-blocked), ROLLBACK sạch, EXIT 0"
+      },
+      "phase2": {
+        "gate_script": "backend/supabase/tests/qc_phase2.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS — QC độc lập: gate EXIT 0 (2721/2721, compare OK, re-import stable) + static check (no hardcode 2721, contract đủ codes, service key không lọt frontend) + check ngoài gate (TRIM spot-check, error codes junk/GET/missing)",
+        "builder_evidence": "2026-09-04 main run: upload ok:true 2721/2721 skipped:0; full compare 2721=2721 mismatch:0 trim:0; re-import count stable 2721; EXIT 0"
+      },
+      "phase3": {
+        "gate_script": "backend/supabase/tests/qc_phase3.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS — QC độc lập: gate 7/7 EXIT 0 + static (không queue table, lock+compare gọn trong RPC, JS chỉ passthrough, RLS nguyên, key không lọt frontend) + RPC trực tiếp (tie-break bin_mismatch, conflict không tự ghi) + contract lỗi (method_not_allowed, invalid_input)",
+        "builder_evidence": "2026-09-04 main run: 7/7 CHECK PASS (migration idempotent, invalid_input+not_found, 4 statuses, duplicate conflict no-autoinsert, append/relocate+audit, same-batch race 1 row+1 conflict, diff-batch 2 ok, cleanup 0 leftover); EXIT 0"
+      },
+      "phase4": {
+        "gate_script": "frontend/tests/qc_phase4.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS — QC độc lập: gate 5/5 EXIT 0 + review code (2 mode/autoswitch/guard/Enter/focus, API thật isManual đúng, duplicate rẽ nhánh error.code, tái dùng P5) + vitest 1 file riêng + build riêng + grep secrets sạch",
+        "builder_evidence": "2026-09-04 main run: lint clean, tsc strict + vite build OK, vitest 13/13, no localStorage/debounce, real scan-submit invoke + Enter + WAITING guard; EXIT 0"
+      },
+      "phase5": {
+        "gate_script": "frontend/tests/qc_phase5.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS — QC độc lập: gate 5/5 EXIT 0 + vitest riêng 4 file (9 tests incl. luồng toast→append, cấm liệt kê Tag nguồn) + full suite 22/22 + static (realtime đúng bảng/event, toast non-blocking 2 nút, đủ 6 cờ, resolve đúng contract, toast chỉ cho trùng, storage/key sạch)",
+        "builder_evidence": "2026-09-04 main run: lint clean, tsc strict + build OK, vitest 22/22, realtime postgres_changes scanned_data, toast Ghi thêm/Đổi vị trí wired resolve-duplicate, table đủ 6 cờ inline + cột hệ thống; EXIT 0"
+      },
+      "phase6": {
+        "gate_script": "frontend/tests/qc_phase6.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS — QC độc lập: gate 5/5 EXIT 0 + review (Bảng 2 đúng cột/filter/read-only/không BATCH, export đúng kỹ thuật prototype + cột trạng thái, nút disable khi trống, App wiring) + vitest export riêng + node round-trip giữ số 0 đầu",
+        "builder_evidence": "2026-09-04 main run: lint clean, tsc strict + build OK, vitest 29/29, Table 2 read-only + lọc kho/bin (không cột BATCH), export SheetJS text-format @ + nháy đầu + cột trạng thái; EXIT 0"
+      },
+      "phase7": {
+        "gate_script": "tests/qc_phase7.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS có điều kiện — QC độc lập: gate 5/5 EXIT 0 + parse YAML riêng (jobs/steps/branch-gate/secrets đúng) + secrets sạch + Pages-safe. Điều kiện: user tạo 4 GitHub Secrets + bật Pages rồi merge main verify live deploy. Sau verdict đã bỏ --no-verify-jwt ở deploy functions (JWT-verify mặc định, anon key frontend vẫn qua) + chạy lại gate PASS.",
+        "builder_evidence": "2026-09-04 main run + re-run sau hardening: 5/5 CHECK PASS; EXIT 0. Live deploy cloud chưa chạy được (thiếu SUPABASE_ACCESS_TOKEN) — mục bàn giao user."
+      },
+      "phase8": {
+        "gate_script": "tests/qc_phase8.sh",
+        "status": "passed",
+        "attempts": 1,
+        "last_verdict": "PASS — QC độc lập chạy lại gate EXIT 0 (5/5: auth, RLS, mẫu 4 batch + resolve + audit, realtime live, ref 2721 + cleanup 0) + verify sau gate (ref 2721/scanned 0/audit 0, đủ 8/8 gates, Learning P8 khớp). Xác nhận đủ điều kiện bàn giao.",
+        "builder_evidence": "2026-09-04 main run: 5/5 CHECK PASS (auth sign-in, RLS auth-đọc/anon-chặn, mẫu 4 batch đủ 4 status + duplicate→append/relocate + 6/6 scanned_by + audit actor, realtime INSERT live QC8_REALTIME_OK, ref nguyên 2721 + cleanup 0 sót); EXIT 0"
+      }
+    }
+  },
+  "notes_for_next_session": "BÀN GIAO 2026-09-04: loop P1-P8 passed (QC độc lập). Việc cần user: (1) tạo 4 GitHub Secrets (SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) + bật Pages Source=GitHub Actions, merge main verify live deploy; (2) reconcile DDL cloud (3 bảng đang 0 dòng, chưa rõ khớp migration) trước/khi db push — cần access token; (3) regenerate service_role trên Dashboard vì key từng lộ trong chat."
+}

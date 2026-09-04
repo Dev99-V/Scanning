@@ -1,0 +1,11 @@
+# supabase local / secrets — không bao giờ commit key
+backend/supabase/.env
+backend/supabase/functions/.env
+backend/supabase/.temp/
+backend/supabase/.branches/
+# frontend build + env (VITE_* keys chỉ ở local/CI secrets, không commit)
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
