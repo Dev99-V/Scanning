@@ -14,18 +14,21 @@ export type ScanStatus =
 export interface ScanSuccess {
   id: string;
   status: ScanStatus;
+  stockCode?: string | null;
 }
 
 export interface ScanAttempt {
   batchId: string;
   qty: number;
   bin: string;
+  stockCode?: string | null;
 }
 
 export interface DuplicateConflict {
   existingId: string;
   computedStatus: ScanStatus;
   attempted: ScanAttempt;
+  stockCode?: string | null;
 }
 
 export type ScanOutcome =
@@ -37,6 +40,7 @@ export interface ResolveResult {
   id: string;
   status: ScanStatus;
   resolution: 'appended' | 'relocated';
+  stockCode?: string | null;
 }
 
 export type ResolveOutcome =
@@ -73,33 +77,62 @@ export async function submitScan(input: {
   qty: number;
   bin: string;
   isManual: boolean;
+  stockCode?: string | null;
 }): Promise<ScanOutcome> {
+  const reqBody: Record<string, unknown> = {
+    batch_id: input.batchId,
+    qty: input.qty,
+    bin: input.bin,
+    is_manual: input.isManual,
+  };
+  if (input.stockCode !== undefined) {
+    reqBody.stock_code = input.stockCode;
+  }
+
   const { data, error } = await supabase.functions.invoke('scan-submit', {
-    body: { batch_id: input.batchId, qty: input.qty, bin: input.bin, is_manual: input.isManual },
+    body: reqBody,
   });
   if (error) {
     const info = await readContractError(error as { context?: unknown });
     if (info.code === 'duplicate') {
       const d = info.data ?? {};
+      const conflictObj: DuplicateConflict = {
+        existingId: typeof d.existing_id === 'string' ? d.existing_id : '',
+        computedStatus: (d.computed_status as ScanStatus) ?? 'pending',
+        attempted: {
+          batchId: input.batchId,
+          qty: input.qty,
+          bin: input.bin,
+        },
+      };
+      if (input.stockCode !== undefined) {
+        conflictObj.attempted.stockCode = input.stockCode;
+      }
+      if (typeof d.stock_code === 'string') {
+        conflictObj.stockCode = d.stock_code;
+      }
       return {
         kind: 'duplicate',
-        conflict: {
-          existingId: typeof d.existing_id === 'string' ? d.existing_id : '',
-          computedStatus: (d.computed_status as ScanStatus) ?? 'pending',
-          attempted: { batchId: input.batchId, qty: input.qty, bin: input.bin },
-        },
+        conflict: conflictObj,
       };
     }
     return scanErr(info.code, info.message);
   }
-  const body = data as { ok?: unknown; data?: { id?: unknown; status?: unknown } };
+  const body = data as {
+    ok?: unknown;
+    data?: { id?: unknown; status?: unknown; stock_code?: unknown };
+  };
   if (body?.ok === true) {
+    const resObj: ScanSuccess = {
+      id: String(body.data?.id ?? ''),
+      status: (body.data?.status as ScanStatus) ?? 'pending',
+    };
+    if (typeof body.data?.stock_code === 'string') {
+      resObj.stockCode = body.data.stock_code;
+    }
     return {
       kind: 'scanned',
-      result: {
-        id: String(body.data?.id ?? ''),
-        status: (body.data?.status as ScanStatus) ?? 'pending',
-      },
+      result: resObj,
     };
   }
   return scanErr('bad_response', 'Unexpected response from scan-submit');
@@ -111,15 +144,21 @@ export async function resolveDuplicate(input: {
   batchId: string;
   qty: number;
   bin: string;
+  stockCode?: string | null;
 }): Promise<ResolveOutcome> {
+  const reqBody: Record<string, unknown> = {
+    action: input.action,
+    scanned_id: input.scannedId,
+    batch_id: input.batchId,
+    qty: input.qty,
+    bin: input.bin,
+  };
+  if (input.stockCode !== undefined) {
+    reqBody.stock_code = input.stockCode;
+  }
+
   const { data, error } = await supabase.functions.invoke('resolve-duplicate', {
-    body: {
-      action: input.action,
-      scanned_id: input.scannedId,
-      batch_id: input.batchId,
-      qty: input.qty,
-      bin: input.bin,
-    },
+    body: reqBody,
   });
   if (error) {
     const info = await readContractError(error as { context?: unknown });
@@ -127,16 +166,20 @@ export async function resolveDuplicate(input: {
   }
   const body = data as {
     ok?: unknown;
-    data?: { id?: unknown; status?: unknown; resolution?: unknown };
+    data?: { id?: unknown; status?: unknown; resolution?: unknown; stock_code?: unknown };
   };
   if (body?.ok === true) {
+    const resObj: ResolveResult = {
+      id: String(body.data?.id ?? ''),
+      status: (body.data?.status as ScanStatus) ?? 'pending',
+      resolution: body.data?.resolution === 'relocated' ? 'relocated' : 'appended',
+    };
+    if (typeof body.data?.stock_code === 'string') {
+      resObj.stockCode = body.data.stock_code;
+    }
     return {
       kind: 'resolved',
-      result: {
-        id: String(body.data?.id ?? ''),
-        status: (body.data?.status as ScanStatus) ?? 'pending',
-        resolution: body.data?.resolution === 'relocated' ? 'relocated' : 'appended',
-      },
+      result: resObj,
     };
   }
   return resolveErr('bad_response', 'Unexpected response from resolve-duplicate');

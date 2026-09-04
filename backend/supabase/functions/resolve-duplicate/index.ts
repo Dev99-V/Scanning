@@ -31,7 +31,7 @@ serve(async (req: Request) => {
 
   let body: {
     action?: unknown; scanned_id?: unknown; batch_id?: unknown;
-    qty?: unknown; bin?: unknown; is_manual?: unknown;
+    qty?: unknown; bin?: unknown; is_manual?: unknown; stock_code?: unknown;
   };
   try {
     body = await req.json();
@@ -44,6 +44,7 @@ serve(async (req: Request) => {
   const qty = typeof body.qty === "number" ? body.qty : Number(body.qty);
   const bin = typeof body.bin === "string" ? body.bin.trim() : "";
   const isManual = body.is_manual === true;
+  const stockCode = typeof body.stock_code === "string" ? body.stock_code.trim() : null;
   if (!action || !scannedId || !batchId || !Number.isFinite(qty) || !bin) {
     return json(400, {
       ok: false,
@@ -74,6 +75,7 @@ serve(async (req: Request) => {
     p_bin: bin,
     p_is_manual: isManual,
     p_actor: actor,
+    p_stock_code: stockCode,
   });
   if (error) {
     if (error.message.includes("duplicate_target_not_found")) {
@@ -81,6 +83,6 @@ serve(async (req: Request) => {
     }
     return json(500, { ok: false, error: { code: "internal", message: error.message } });
   }
-  const r = data as { id: string; status: string; resolution: string };
-  return json(200, { ok: true, data: { id: r.id, status: r.status, resolution: r.resolution } });
+  const r = data as { id: string; status: string; resolution: string; stock_code?: string };
+  return json(200, { ok: true, data: { id: r.id, status: r.status, resolution: r.resolution, stock_code: r.stock_code } });
 });

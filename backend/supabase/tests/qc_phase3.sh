@@ -39,6 +39,7 @@ trap cleanup_serve EXIT
 
 echo "--- CHECK 1/7: migration apply sạch (idempotent) ---"
 docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$REPO_BACKEND/supabase/migrations/20260904070945_scan_submit_rpc.sql" > /dev/null || fail "migration apply failed"
+docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$REPO_BACKEND/supabase/migrations/20260904091500_add_stock_code_to_scanned_data.sql" > /dev/null || fail "latest migration apply failed"
 pass "migration"
 
 echo "--- CHECK 2/7: invalid input -> invalid_input ---"

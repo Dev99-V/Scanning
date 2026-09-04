@@ -6,6 +6,7 @@ export interface ScanRow {
   batch_id: string;
   qty: number;
   bin: string;
+  stock_code?: string | null;
   status: ScanStatus;
   resolution: 'appended' | 'relocated' | null;
   is_manual: boolean;

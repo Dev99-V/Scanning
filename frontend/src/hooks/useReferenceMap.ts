@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import type { ReferenceRow } from '../lib/types';
 
 export interface SystemNumbers {
+  stock_code?: string;
   qty: number;
   bin: string;
 }
@@ -17,11 +18,11 @@ export function useReferenceMap() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const { data } = await supabase.from('reference_stock').select('batch_id,bin,qty');
+      const { data } = await supabase.from('reference_stock').select('batch_id,stock_code,bin,qty');
       if (cancelled) return;
       const map = new Map<string, SystemNumbers>();
       for (const r of (data ?? []) as ReferenceRow[]) {
-        map.set(r.batch_id, { qty: r.qty, bin: r.bin });
+        map.set(r.batch_id, { stock_code: r.stock_code, qty: r.qty, bin: r.bin });
       }
       setByBatch(map);
       setLoading(false);

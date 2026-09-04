@@ -38,7 +38,7 @@ describe('useScannedData', () => {
   it('fetch đầu kỳ + subscribe postgres_changes bảng scanned_data', async () => {
     const { result } = renderHook(() => useScannedData());
     await act(async () => {});
-    expect(select).toHaveBeenCalledWith('id,batch_id,qty,bin,status,resolution,is_manual,scanned_at');
+    expect(select).toHaveBeenCalledWith('id,batch_id,qty,bin,status,resolution,is_manual,scanned_at,stock_code');
     expect(on).toHaveBeenCalledWith(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'scanned_data' },

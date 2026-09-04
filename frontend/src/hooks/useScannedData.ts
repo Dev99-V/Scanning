@@ -15,7 +15,7 @@ export function useScannedData() {
     async function initial() {
       const { data, error: err } = await supabase
         .from('scanned_data')
-        .select('id,batch_id,qty,bin,status,resolution,is_manual,scanned_at')
+        .select('id,batch_id,qty,bin,status,resolution,is_manual,scanned_at,stock_code')
         .order('scanned_at', { ascending: false })
         .limit(500);
       if (cancelled) return;

@@ -26,7 +26,7 @@
       "project_ref": "pobabdgyukyufzzxbvsn",
       "url": "https://pobabdgyukyufzzxbvsn.supabase.co",
       "keys_location": "frontend/.env.local (gitignored, anon only) + GitHub Secrets ở Phase 7; SERVICE_ROLE chỉ cho Edge Functions secrets/CI, KHÔNG ở frontend, KHÔNG commit",
-      "cloud_state_2026_09_04": "3 bảng đã tồn tại trên cloud nhưng đều 0 dòng (kiểm bằng anon REST, read-only). Chưa rõ DDL cloud có khớp migration local không — Phase 7 cần access token để link + diff/push, reconcile trước khi deploy."
+      "cloud_state_2026_09_04": "RECONCILED + LIVE: DDL cloud khớp 100% migration local (10+10 cột incl. raw, 6 index, RLS+12 policies, 2 RPC, realtime pub) nên baseline history repair applied (không re-run); db push up-to-date; 3 functions deployed; import-reference cloud upsert 2721/2721 == đếm động file, spot-check TRIM/raw đúng. LƯU Ý: RLS chỉ cho authenticated nên app cần user đăng nhập mới đọc được dữ liệu (tạo user ở Dashboard Auth). Token tạm đã xóa."
     }
   },
   "current_phase": 8,
@@ -54,6 +54,13 @@
     "1 Stock Code có thể có nhiều BATCH khác nhau ở nhiều Warehouse/BIN khác nhau"
   ],
   "pending_contract_changes": [],
+  "decisions_resolved_layout_2026_09_04": {
+    "layout_structure": "Phương án B: Xếp chồng cả 2 bảng trên cùng màn hình chính, cuộn 100 dòng độc lập.",
+    "qty_input_policy": "Luôn để trống ô số lượng để bắt buộc người kiểm đếm phải gõ tay từ đầu.",
+    "modal_pda_scan": "Giao diện nổi PdaScanModal phong cách scantag.html, luồng Bin -> Tag -> Số lượng, cảnh báo trực tiếp trùng (Ghi thêm/Đổi vị trí) và không có trong nguồn (điền Stock code), streaming table + export XLS.",
+    "recon_table_columns": "7 cột: Stock code, Tag ID, SL quét, SL hệ thống, Bin quét, Bin hệ thống, Trạng thái & Ghi chú cảnh báo, kèm Export XLS.",
+    "reference_import_card": "Tích hợp thẻ upload file Excel Stock Balance With Batch.xlsx trực tiếp trên Bảng 2."
+  },
   "qc_loop": {
     "enabled": true,
     "protocol_doc": "QC_LOOP.md",
@@ -120,5 +127,5 @@
       }
     }
   },
-  "notes_for_next_session": "BÀN GIAO 2026-09-04: loop P1-P8 passed (QC độc lập). Việc cần user: (1) tạo 4 GitHub Secrets (SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_ID, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) + bật Pages Source=GitHub Actions, merge main verify live deploy; (2) reconcile DDL cloud (3 bảng đang 0 dòng, chưa rõ khớp migration) trước/khi db push — cần access token; (3) regenerate service_role trên Dashboard vì key từng lộ trong chat."
+  "notes_for_next_session": "ALL GREEN 2026-09-04: backend-deploy run 33854239993 SUCCESS (test 3 gates + deploy link/push/functions); frontend live https://dev99-v.github.io/Scaning/; cloud reconciled + reference 2721. Lỗi Link user thấy là run cũ 33852944365 (trước khi có secret) — không cần sửa. Token GitHub tạm đã xóa; NHẮC USER REVOKE cả 2 token + regenerate service_role. Việc nhỏ còn lại: đổi <title>frontend</title>."
 }

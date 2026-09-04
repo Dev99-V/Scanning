@@ -30,7 +30,7 @@ serve(async (req: Request) => {
     return json(500, { ok: false, error: { code: "server_misconfigured", message: "Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY" } });
   }
 
-  let body: { batch_id?: unknown; qty?: unknown; bin?: unknown; is_manual?: unknown };
+  let body: { batch_id?: unknown; qty?: unknown; bin?: unknown; is_manual?: unknown; stock_code?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -40,6 +40,7 @@ serve(async (req: Request) => {
   const qty = typeof body.qty === "number" ? body.qty : Number(body.qty);
   const bin = typeof body.bin === "string" ? body.bin.trim() : "";
   const isManual = body.is_manual === true;
+  const stockCode = typeof body.stock_code === "string" ? body.stock_code.trim() : null;
   if (!batchId || !Number.isFinite(qty) || !bin) {
     return json(400, {
       ok: false,
@@ -65,18 +66,19 @@ serve(async (req: Request) => {
     p_bin: bin,
     p_is_manual: isManual,
     p_scanned_by: scannedBy,
+    p_stock_code: stockCode,
   });
   if (error) {
     return json(500, { ok: false, error: { code: "internal", message: error.message } });
   }
   if (data && (data as { conflict?: boolean }).conflict) {
-    const c = data as { existing_id: string; computed_status: string };
+    const c = data as { existing_id: string; computed_status: string; stock_code?: string };
     return json(409, {
       ok: false,
       error: { code: "duplicate", message: `Tag ID ${batchId} đã được quét — chọn Ghi thêm hoặc Đổi vị trí` },
-      data: { existing_id: c.existing_id, computed_status: c.computed_status },
+      data: { existing_id: c.existing_id, computed_status: c.computed_status, stock_code: c.stock_code },
     });
   }
-  const r = data as { id: string; status: string };
-  return json(200, { ok: true, data: { id: r.id, status: r.status } });
+  const r = data as { id: string; status: string; stock_code?: string };
+  return json(200, { ok: true, data: { id: r.id, status: r.status, stock_code: r.stock_code } });
 });

@@ -28,6 +28,25 @@
 
 ## Nhật ký
 
+### [2026-09-04] Tái cấu trúc layout: Thẻ Quét Tag nổi (scantag.html), Stock Code, Thẻ Import và Cuộn 100 dòng
+
+- **Khu vực**: Toàn bộ luồng PDA Scan (Migration DB, Edge Functions, RPC, PdaScanModal, ReconciliationTable, ReferenceDataTable)
+- **Triệu chứng**: Giao diện cũ phân mảnh ô quét tĩnh và thiếu cột Stock Code ở bảng quét, thiếu thẻ import trực tiếp từ UI, thiếu bảng streaming trong modal và chưa hỗ trợ cuộn 100 dòng.
+- **Nguyên nhân gốc**: Cần chuẩn hóa theo mô tả người dùng thực tế: modal nổi phong cách cyberpunk `scantag.html`, luồng quét 3 bước (Bin ➔ Tag ➔ Số lượng bắt buộc gõ tay từ đầu), cảnh báo trùng (Ghi thêm / Đổi vị trí) và cảnh báo ngoài nguồn (điền Stock Code) trực tiếp trong modal, giao diện chính xếp chồng 2 bảng với phân đoạn 100 dòng mượt mà.
+- **Cách sửa**:
+  1. DB: Tạo migration `20260904091500_add_stock_code_to_scanned_data.sql` thêm cột `stock_code`, cập nhật RPC `scan_submit` và `resolve_duplicate` nhận `p_stock_code`.
+  2. Edge Functions: Cập nhật `scan-submit` và `resolve-duplicate` chuyển tiếp `stock_code`.
+  3. Frontend: Xây dựng `PdaScanModal.tsx` kế thừa UI `scantag.html` (neon, glassmorphism, auto-jump focus Bin ➔ Tag ➔ Qty, cảnh báo trùng/ngoài nguồn, streaming table + export XLS); nâng cấp `ReconciliationTable.tsx` hiển thị đủ 7 cột (`Stock code`, `Tag ID`, `SL quét`, `Bin quét`, `SL hệ thống`, `Bin hệ thống`, `Ghi chú/Cảnh báo`) và cuộn 100 dòng; nâng cấp `ReferenceDataTable.tsx` tích hợp `ReferenceImportCard.tsx` nạp file Excel `Stock Balance With Batch.xlsx` từ dòng 5 header; cập nhật `exportExcel.ts` xuất đủ cột và ghi chú.
+- **Bằng chứng đã hết lỗi**:
+  - `bash backend/supabase/tests/qc_phase3.sh` PASS (7/7 checks)
+  - `bash frontend/tests/qc_phase4.sh` PASS (5/5 checks)
+  - `bash frontend/tests/qc_phase5.sh` PASS (5/5 checks)
+  - `bash frontend/tests/qc_phase6.sh` PASS (5/5 checks)
+  - `bash tests/qc_phase8.sh` PASS (5/5 checks, realtime live OK, 0 leftovers)
+  - Vitest 11 test files, 35/35 tests PASS; `npm run build` PASS.
+- **Cách phòng tránh lần sau**: Khi mở rộng contract thêm tham số mới (như `stockCode`), giữ tham số ở dạng optional/undefined-safe để không phá vỡ các unit test và API client cũ.
+- **Liên quan**: `PdaScanModal.tsx`, `ReconciliationTable.tsx`, `ReferenceDataTable.tsx`, `ReferenceImportCard.tsx`, `exportExcel.ts`, migration `20260904091500_add_stock_code_to_scanned_data.sql`
+
 ### [2026-09-04] P8 e2e live: toàn bộ luồng xanh, 0 sai lệch với dữ liệu mẫu
 
 - **Khu vực**: E2E tổng (auth + RLS + đối chiếu mẫu thật + realtime live + audit)
