@@ -130,4 +130,75 @@ describe('ReferenceDataTable', () => {
       expect(screen.getByText('(cũ: C4)')).toBeInTheDocument();
     });
   });
+
+  it('highlight dòng khi dữ liệu đã khớp với Bảng 1 và hiển thị badge ĐÃ KHỚP', async () => {
+    const mockScannedRows = [
+      {
+        id: 's1',
+        batch_id: 'TAG001',
+        qty: 1000,
+        bin: 'C4',
+        stock_code: '3400010001',
+        status: 'ok' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:00:00Z',
+      },
+    ];
+
+    render(<ReferenceDataTable scannedRows={mockScannedRows} />);
+    await screen.findByText('3400010001');
+
+    // Dòng TAG001 khớp: có testid ref-row-matched và badge ĐÃ KHỚP
+    const matchedRow = screen.getByTestId('ref-row-matched');
+    expect(matchedRow).toBeInTheDocument();
+    expect(matchedRow).toHaveTextContent('TAG001');
+    expect(matchedRow).toHaveTextContent('ĐÃ KHỚP');
+
+    // Dòng TAG002 không khớp: có testid ref-row và không có badge ĐÃ KHỚP
+    const unmatchedRow = screen.getByTestId('ref-row');
+    expect(unmatchedRow).toBeInTheDocument();
+    expect(unmatchedRow).toHaveTextContent('TAG002');
+    expect(unmatchedRow).not.toHaveTextContent('ĐÃ KHỚP');
+
+    // Badge tổng kết trên header: ĐÃ KHỚP BẢNG 1: 1 DÒNG
+    expect(screen.getByTestId('ref-matched-badge')).toHaveTextContent(/ĐÃ KHỚP BẢNG 1: 1 DÒNG/i);
+  });
+
+  it('lọc nhanh chỉ hiện dòng đã khớp Bảng 1 khi click nút toggle', async () => {
+    const mockScannedRows = [
+      {
+        id: 's1',
+        batch_id: 'TAG001',
+        qty: 1000,
+        bin: 'C4',
+        stock_code: '3400010001',
+        status: 'ok' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:00:00Z',
+      },
+    ];
+
+    render(<ReferenceDataTable scannedRows={mockScannedRows} />);
+    await screen.findByText('3400010001');
+
+    // Ban đầu thấy cả TAG001 và TAG002
+    expect(screen.getByText('TAG001')).toBeInTheDocument();
+    expect(screen.getByText('TAG002')).toBeInTheDocument();
+
+    // Click toggle chỉ hiện dòng đã khớp
+    const toggleBtn = screen.getByLabelText('Lọc dòng đã khớp Bảng 1');
+    fireEvent.click(toggleBtn);
+
+    // Chỉ thấy TAG001, TAG002 bị ẩn
+    expect(screen.getByText('TAG001')).toBeInTheDocument();
+    expect(screen.queryByText('TAG002')).not.toBeInTheDocument();
+
+    // Click toggle lần nữa để hiển thị lại tất cả
+    fireEvent.click(toggleBtn);
+    expect(screen.getByText('TAG001')).toBeInTheDocument();
+    expect(screen.getByText('TAG002')).toBeInTheDocument();
+  });
 });
+

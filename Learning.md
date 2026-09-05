@@ -239,6 +239,24 @@
   - Vitest 11 test files với 42/42 tests PASS (bao gồm test mở modal và kiểm tra ghi chú vị trí cũ).
   - TypeScript strict (`tsc -b`) và Vite build thành công không lỗi; Biome lint 0 lỗi 0 cảnh báo.
 
+### [2026-09-05] Thêm tính năng highlight ở Bảng 2 khi dữ liệu đã khớp với Bảng 1
+
+- **Khu vực**: Frontend Bảng 2 ([ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx)), [App.tsx](file:///workspaces/Scaning/frontend/src/App.tsx), Unit Tests ([ReferenceDataTable.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReferenceDataTable.test.tsx)).
+- **Yêu cầu người dùng**: Thêm 1 chức năng highlight ở Bảng số 2 (Reference Data Table) khi dữ liệu đã khớp với Bảng số 1 (Reconciliation Table).
+- **Nguyên nhân & Giải pháp kiến trúc**:
+  1. `App.tsx` truyền danh sách `scannedRows` từ hook `useScannedData` vào `ReferenceDataTable`.
+  2. `ReferenceDataTable.tsx`:
+     - Xây dựng bản đồ `scannedByBatch` (`Map<string, ScanRow[]>`) và hàm `isRowMatched(r)` kiểm tra xem dòng nguồn có tương ứng với lượt quét ở Bảng 1 có `status === 'ok'` hoặc trùng khớp cả vị trí `bin` và số lượng `qty` hay không.
+     - Highlight trực quan: các dòng đã khớp được phủ nền xanh ngọc cyberpunk (`bg-emerald-950/40 hover:bg-emerald-900/50 border-l-4 border-l-emerald-400 text-emerald-100 shadow-[inset_0_0_12px_rgba(16,185,129,0.12)]`), hiển thị badge `✓ ĐÃ KHỚP` cạnh Tag ID và màu sắc số lượng nổi bật.
+     - Thống kê tiến độ trên tiêu đề Bảng 2: Huy hiệu `ĐÃ KHỚP BẢNG 1: X DÒNG`.
+     - Nút toggle lọc nhanh: `[✓ Chỉ hiện đã khớp (X)]` hỗ trợ lọc ngay lập tức các dòng đã khớp hoặc hiển thị tất cả.
+     - Tích hợp tìm kiếm thông minh: gõ từ khóa `"khớp"`, `"đã khớp"`, `"da khop"` tự động lọc ra các dòng khớp nguồn.
+- **Bằng chứng đã hết lỗi**:
+  - Viết 2 unit test mới trong `ReferenceDataTable.test.tsx`: kiểm tra highlight/badge `ĐÃ KHỚP` và kiểm tra nút toggle lọc nhanh.
+  - Vitest 11 files với 44/44 tests PASS; `oxlint` 0 lỗi 0 cảnh báo; `tsc -b && vite build` thành công.
+  - Toàn bộ QC gates liên quan (Phase 5, Phase 6, Phase 8) đều PASS (Exit 0).
+
+
 
 
 

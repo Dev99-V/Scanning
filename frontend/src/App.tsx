@@ -116,6 +116,7 @@ export default function App() {
 
       {/* Bảng 2: Dữ Liệu Nguồn & Thẻ Import */}
       <ReferenceDataTable
+        scannedRows={rows}
         onQtyUpdated={updateBatchQty}
         onBinUpdated={(batchId, newBin) => {
           updateBatchBin(batchId, newBin);

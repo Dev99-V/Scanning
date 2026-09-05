@@ -4,6 +4,7 @@
 // Bộ lọc thông minh: tự động dò tìm mọi trường, riêng Kho cần thêm tiền tố 'WH' (vd WH01, WH50).
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import type { ScanRow } from '../lib/types';
 import ReferenceImportCard from './ReferenceImportCard';
 
 export interface ReferenceLine {
@@ -18,18 +19,58 @@ export interface ReferenceLine {
 }
 
 interface ReferenceDataTableProps {
+  scannedRows?: ScanRow[];
   onQtyUpdated?: (batchId: string, newQty: number) => void;
   onBinUpdated?: (batchId: string, newBin: string) => void;
 }
 
-export default function ReferenceDataTable({ onQtyUpdated, onBinUpdated }: ReferenceDataTableProps = {}) {
+export default function ReferenceDataTable({
+  scannedRows = [],
+  onQtyUpdated,
+  onBinUpdated,
+}: ReferenceDataTableProps = {}) {
   const [rows, setRows] = useState<ReferenceLine[]>([]);
   const [smartFilter, setSmartFilter] = useState('');
   const [warehouse, setWarehouse] = useState('');
   const [bin, setBin] = useState('');
+  const [matchedOnlyFilter, setMatchedOnlyFilter] = useState(false);
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(100);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Bản đồ các lượt quét theo batch_id để kiểm tra trạng thái khớp với Bảng 1
+  const scannedByBatch = useMemo(() => {
+    const map = new Map<string, ScanRow[]>();
+    if (!scannedRows) return map;
+    for (const s of scannedRows) {
+      if (!s.batch_id) continue;
+      const list = map.get(s.batch_id) || [];
+      list.push(s);
+      map.set(s.batch_id, list);
+    }
+    return map;
+  }, [scannedRows]);
+
+  // Kiểm tra xem 1 dòng nguồn có khớp hoàn toàn với dữ liệu quét ở Bảng 1 hay không
+  const isRowMatched = React.useCallback(
+    (r: ReferenceLine): boolean => {
+      const scans = scannedByBatch.get(r.batch_id);
+      if (!scans || scans.length === 0) return false;
+      return scans.some(
+        (s) => s.status === 'ok' || (s.bin === r.bin && Number(s.qty) === Number(r.qty)),
+      );
+    },
+    [scannedByBatch],
+  );
+
+  // Đếm tổng số dòng nguồn đã khớp với Bảng 1
+  const matchedCount = useMemo(() => {
+    let count = 0;
+    for (const r of rows) {
+      if (isRowMatched(r)) count++;
+    }
+    return count;
+  }, [rows, isRowMatched]);
 
   // Trạng thái modal chỉnh sửa số lượng (không có nút xóa)
   const [editingRow, setEditingRow] = useState<ReferenceLine | null>(null);
@@ -166,22 +207,29 @@ export default function ReferenceDataTable({ onQtyUpdated, onBinUpdated }: Refer
     };
   }, [warehouse, bin, refreshTrigger]);
 
-  // Bộ lọc thông minh:
+  // Bộ lọc thông minh kết hợp lọc dòng đã khớp Bảng 1:
   // "bộ lọc phải được thiết lập thông minh khi lọc stock code hoặc bất kì trường nào trong bảng
   // sẽ được tự động dò tìm theo đúng trường dữ liệu đó riêng WH sẽ phải thêm WH ở trước sau đó điền theo dữ liệu trong bảng mới lọc được"
   const filteredRows = useMemo(() => {
-    if (!smartFilter.trim()) return rows;
+    let list = rows;
+    if (matchedOnlyFilter) {
+      list = list.filter((r) => isRowMatched(r));
+    }
+    if (!smartFilter.trim()) return list;
     const term = smartFilter.trim();
 
     // Nếu bắt đầu bằng WH (case-insensitive): dò tìm theo Warehouse
     if (/^wh/i.test(term)) {
       const whTerm = term.replace(/^wh[\s:-]*/i, '').toLowerCase();
-      return rows.filter((r) => r.warehouse.toLowerCase().includes(whTerm));
+      return list.filter((r) => r.warehouse.toLowerCase().includes(whTerm));
     }
 
-    // Các trường hợp khác: tự động dò tìm theo Stock Code, Batch/Tag ID, Bin, Qty, Ngày tạo
+    // Các trường hợp khác: tự động dò tìm theo Stock Code, Batch/Tag ID, Bin, Qty, Ngày tạo hoặc từ khóa "khớp"
     const lower = term.toLowerCase();
-    return rows.filter((r) => {
+    const isSearchingMatched = lower === 'khớp' || lower === 'đã khớp' || lower === 'da khop';
+
+    return list.filter((r) => {
+      if (isSearchingMatched && isRowMatched(r)) return true;
       return (
         r.stock_code.toLowerCase().includes(lower) ||
         r.batch_id.toLowerCase().includes(lower) ||
@@ -190,7 +238,7 @@ export default function ReferenceDataTable({ onQtyUpdated, onBinUpdated }: Refer
         (r.create_date ? r.create_date.toLowerCase().includes(lower) : false)
       );
     });
-  }, [rows, smartFilter]);
+  }, [rows, smartFilter, matchedOnlyFilter, isRowMatched]);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const target = e.currentTarget;
@@ -225,17 +273,26 @@ export default function ReferenceDataTable({ onQtyUpdated, onBinUpdated }: Refer
         <div className="mb-4 flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-300 flex items-center gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-slate-300 flex flex-wrap items-center gap-2">
                 <span>📂</span> Bảng 2 — Dữ liệu file nguồn ({rows.length.toLocaleString()} dòng)
+                {matchedCount > 0 && (
+                  <span
+                    data-testid="ref-matched-badge"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 shadow-sm"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ĐÃ KHỚP BẢNG 1: {matchedCount.toLocaleString()} DÒNG
+                  </span>
+                )}
               </h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Hiển thị đầy đủ thông tin tồn kho gốc: Stock Code, Tag ID (Batch), Kho, Bin, Số lượng và Ngày tạo.
+                Hiển thị đầy đủ thông tin tồn kho gốc: Stock Code, Tag ID (Batch), Kho, Bin, Số lượng và Ngày tạo. Các dòng khớp với Bảng 1 được highlight xanh ngọc nổi bật.
               </p>
             </div>
           </div>
 
-          {/* Hàng bộ lọc: Bộ lọc thông minh & Lọc kho / vị trí */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          {/* Hàng bộ lọc: Bộ lọc thông minh & Lọc kho / vị trí & Nút lọc nhanh đã khớp */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
             {/* Bộ lọc thông minh chính */}
             <div className="relative md:col-span-1">
               <input
@@ -279,6 +336,26 @@ export default function ReferenceDataTable({ onQtyUpdated, onBinUpdated }: Refer
                 className="w-full rounded-xl border border-white/10 bg-black/50 p-2.5 font-mono text-xs text-cyan-300 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
               />
             </div>
+
+            {/* Nút lọc nhanh dòng đã khớp */}
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMatchedOnlyFilter((prev) => !prev);
+                  setVisibleCount(100);
+                }}
+                aria-label="Lọc dòng đã khớp Bảng 1"
+                className={`w-full flex items-center justify-center gap-1.5 rounded-xl border p-2.5 font-mono text-xs font-bold transition active:scale-95 ${
+                  matchedOnlyFilter
+                    ? 'border-emerald-500 bg-emerald-500/25 text-emerald-300 shadow-md shadow-emerald-500/20'
+                    : 'border-white/10 bg-black/50 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-300'
+                }`}
+              >
+                <span>{matchedOnlyFilter ? '✓' : '🔍'}</span>
+                <span>Chỉ hiện đã khớp ({matchedCount})</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -306,60 +383,86 @@ export default function ReferenceDataTable({ onQtyUpdated, onBinUpdated }: Refer
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {displayedRows.map((r, i) => (
-                    <tr key={`${r.batch_id}-${i}`} className="hover:bg-white/5 transition-colors">
-                      <td className="px-3 py-2 font-bold text-slate-200">{r.stock_code}</td>
-                      <td className="px-3 py-2 font-bold text-cyan-300">{r.batch_id}</td>
-                      <td className="px-3 py-2 text-slate-300">{r.warehouse}</td>
-                      {/* Vị trí mới kèm note vị trí cũ gần nhất tại cùng vị trí + nút Sửa vị trí */}
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="text-right">
-                            <span className="font-semibold text-emerald-300">{r.bin}</span>
-                            {r.previous_bin && (
-                              <span className="block text-[10px] font-medium text-amber-400/90">
-                                (cũ: {r.previous_bin})
+                  {displayedRows.map((r, i) => {
+                    const isMatched = isRowMatched(r);
+                    return (
+                      <tr
+                        key={`${r.batch_id}-${i}`}
+                        data-testid={isMatched ? 'ref-row-matched' : 'ref-row'}
+                        className={`transition-colors ${
+                          isMatched
+                            ? 'bg-emerald-950/40 hover:bg-emerald-900/50 border-l-4 border-l-emerald-400 text-emerald-100 shadow-[inset_0_0_12px_rgba(16,185,129,0.12)]'
+                            : 'hover:bg-white/5'
+                        }`}
+                      >
+                        <td className="px-3 py-2 font-bold text-slate-200">{r.stock_code}</td>
+                        <td className="px-3 py-2 font-bold">
+                          <div className="flex items-center gap-1.5">
+                            <span className={isMatched ? 'text-emerald-300 font-extrabold' : 'text-cyan-300'}>
+                              {r.batch_id}
+                            </span>
+                            {isMatched && (
+                              <span
+                                title="Dữ liệu đã khớp hoàn toàn với Bảng 1"
+                                className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/25 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-emerald-300 shadow-sm"
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span>ĐÃ KHỚP</span>
                               </span>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => openEditBinModal(r)}
-                            title="Chỉnh sửa vị trí (Bin)"
-                            aria-label={`Chỉnh sửa vị trí ${r.batch_id}`}
-                            className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-emerald-500/40 hover:bg-emerald-950/60 hover:text-emerald-300 active:scale-95"
-                          >
-                            ✏️
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Số lượng mới kèm note số lượng cũ gần nhất tại cùng vị trí + nút Sửa (không có nút xóa) */}
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="text-right">
-                            <span className="font-bold text-white text-xs">{r.qty}</span>
-                            {r.previous_qty !== null && r.previous_qty !== undefined && (
-                              <span className="block text-[10px] font-medium text-amber-400/90">
-                                (cũ: {r.previous_qty})
-                              </span>
-                            )}
+                        </td>
+                        <td className="px-3 py-2 text-slate-300">{r.warehouse}</td>
+                        {/* Vị trí mới kèm note vị trí cũ gần nhất tại cùng vị trí + nút Sửa vị trí */}
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="text-right">
+                              <span className="font-semibold text-emerald-300">{r.bin}</span>
+                              {r.previous_bin && (
+                                <span className="block text-[10px] font-medium text-amber-400/90">
+                                  (cũ: {r.previous_bin})
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => openEditBinModal(r)}
+                              title="Chỉnh sửa vị trí (Bin)"
+                              aria-label={`Chỉnh sửa vị trí ${r.batch_id}`}
+                              className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-emerald-500/40 hover:bg-emerald-950/60 hover:text-emerald-300 active:scale-95"
+                            >
+                              ✏️
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(r)}
-                            title="Chỉnh sửa số lượng"
-                            aria-label={`Chỉnh sửa số lượng ${r.batch_id}`}
-                            className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
-                          >
-                            ✏️
-                          </button>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-3 py-2 text-center text-slate-400 text-[11px]">{formatDate(r.create_date)}</td>
-                    </tr>
-                  ))}
+                        {/* Số lượng mới kèm note số lượng cũ gần nhất tại cùng vị trí + nút Sửa (không có nút xóa) */}
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="text-right">
+                              <span className={`font-bold text-xs ${isMatched ? 'text-emerald-200 font-extrabold' : 'text-white'}`}>{r.qty}</span>
+                              {r.previous_qty !== null && r.previous_qty !== undefined && (
+                                <span className="block text-[10px] font-medium text-amber-400/90">
+                                  (cũ: {r.previous_qty})
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(r)}
+                              title="Chỉnh sửa số lượng"
+                              aria-label={`Chỉnh sửa số lượng ${r.batch_id}`}
+                              className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                            >
+                              ✏️
+                            </button>
+                          </div>
+                        </td>
+
+                        <td className="px-3 py-2 text-center text-slate-400 text-[11px]">{formatDate(r.create_date)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
