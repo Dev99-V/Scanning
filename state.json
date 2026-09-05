@@ -127,5 +127,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-05: Đã fix lỗi import file Stock Balance With Batch (2).xlsx (nhận diện header động, khử trùng batch_id trước upsert tránh lỗi Postgres 21000) và fix lỗi Bảng 1 không hiển thị dữ liệu quét (thêm AuthModal đăng nhập/đăng ký Supabase Auth, lắng nghe onAuthStateChange, truyền onScanned re-fetch tức thì). Cả 8/8 QC gates đều PASS. Vitest 12 files 39/39 tests PASS, npm run lint 0 warning, build thành công."
+  "notes_for_next_session": "2026-09-05: Đã bỏ hoàn toàn phần đăng nhập theo yêu cầu người dùng. Bổ sung migration RLS SELECT cho anon role trên reference_stock, scanned_data, scan_audit_log (chặn ghi trực tiếp); dọn sạch AuthModal và UI đăng nhập trên frontend; Realtime và bảng đối chiếu hoạt động trơn tru với role anon. Toàn bộ 8/8 QC gates đều PASS. Vitest 11 files 35/35 tests PASS, lint clean, build clean."
 }

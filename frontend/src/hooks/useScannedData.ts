@@ -38,11 +38,6 @@ export function useScannedData() {
     }
     void load();
 
-    // Tự động tải lại dữ liệu khi người dùng đăng nhập / đăng xuất (RLS state thay đổi)
-    const authSub = supabase.auth?.onAuthStateChange?.(() => {
-      void fetchData();
-    });
-
     const channel = supabase
       .channel('scanned_data_changes')
       .on(
@@ -64,7 +59,6 @@ export function useScannedData() {
 
     return () => {
       cancelled = true;
-      authSub?.data?.subscription?.unsubscribe?.();
       if (channel) void supabase.removeChannel?.(channel);
     };
   }, [fetchData]);

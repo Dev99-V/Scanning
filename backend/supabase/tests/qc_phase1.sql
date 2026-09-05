@@ -87,14 +87,14 @@ BEGIN
   END IF;
   IF (SELECT count(*) FROM pg_policies
       WHERE schemaname = 'public'
-        AND tablename IN ('reference_stock','scanned_data','scan_audit_log')) <> 12 THEN
-    RAISE EXCEPTION 'CHECK 5 FAIL: phải có 12 policy (4 thao tác x 3 bảng)';
+        AND tablename IN ('reference_stock','scanned_data','scan_audit_log')) < 12 THEN
+    RAISE EXCEPTION 'CHECK 5 FAIL: phải có ít nhất 12 policy';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_policies
              WHERE schemaname = 'public'
                AND tablename IN ('reference_stock','scanned_data','scan_audit_log')
-               AND 'authenticated' <> ALL (roles)) THEN
-    RAISE EXCEPTION 'CHECK 5 FAIL: policy phải gán cho authenticated';
+               AND NOT (roles && ARRAY['authenticated'::name, 'anon'::name])) THEN
+    RAISE EXCEPTION 'CHECK 5 FAIL: policy chỉ được gán cho authenticated hoặc anon';
   END IF;
   RAISE NOTICE 'CHECK 5/8 RLS + policies: PASS';
 END $$;
@@ -153,17 +153,13 @@ BEGIN
   END;
 END $$;
 
--- 8: RLS chặn anon (không policy cho anon -> select 0 dòng, insert bị từ chối)
+-- 8: RLS cho phép anon select (không cần login), nhưng CHẶN anon insert trực tiếp
 DO $$
 DECLARE
   c int;
 BEGIN
   SET ROLE anon;
   SELECT count(*) INTO c FROM public.scanned_data;
-  IF c <> 0 THEN
-    RESET ROLE;
-    RAISE EXCEPTION 'CHECK 8 FAIL: anon đọc được % dòng', c;
-  END IF;
   BEGIN
     INSERT INTO public.scanned_data (batch_id, qty, bin) VALUES ('ANON00000001', 1, 'A1');
     RESET ROLE;
@@ -172,7 +168,7 @@ BEGIN
     RAISE NOTICE 'anon insert denied: ok';
   END;
   RESET ROLE;
-  RAISE NOTICE 'CHECK 8/8 RLS blocks anon: PASS';
+  RAISE NOTICE 'CHECK 8/8 RLS anon select allowed + direct write blocked: PASS';
 END $$;
 
 ROLLBACK;

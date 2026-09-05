@@ -30,14 +30,6 @@ export function useReferenceMap() {
 
   useEffect(() => {
     void load();
-
-    const authSub = supabase.auth?.onAuthStateChange?.(() => {
-      void load();
-    });
-
-    return () => {
-      authSub?.data?.subscription?.unsubscribe?.();
-    };
   }, [load]);
 
   return { byBatch, loading, refetch: load };

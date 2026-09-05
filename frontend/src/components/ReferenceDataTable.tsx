@@ -40,13 +40,8 @@ export default function ReferenceDataTable() {
     }
     void load();
 
-    const authSub = supabase.auth?.onAuthStateChange?.(() => {
-      void load();
-    });
-
     return () => {
       cancelled = true;
-      authSub?.data?.subscription?.unsubscribe?.();
     };
   }, [warehouse, bin, refreshTrigger]);
 

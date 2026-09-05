@@ -116,3 +116,17 @@
 - **Bằng chứng đã hết lỗi**: (chờ Phase 3) test race-condition: 2 request đồng thời cùng `batch_id` không mất dữ liệu
 - **Cách phòng tránh lần sau**: không trộn nửa vời 2 phương án; nếu sau này cần UI hiện trạng thái hàng chờ thì mới xem lại quyết định này qua `Plan.md` + `state.json`
 - **Liên quan**: `Plan.md` §4 bước 3, §5, §9 Phase 3; `Skills.md` A; `state.json:decisions_locked.concurrency_strategy`
+
+### [2026-09-05] Loại bỏ yêu cầu đăng nhập và phân quyền RLS cho phép anon SELECT
+
+- **Khu vực**: Postgres RLS policies (`scanned_data`, `reference_stock`, `scan_audit_log`) & Frontend UI (`App.tsx`, hooks)
+- **Triệu chứng**: Người dùng yêu cầu bỏ hoàn toàn phần đăng nhập trên giao diện để công nhân kho có thể quét và xem dữ liệu ngay lập tức mà không cần qua bước login.
+- **Nguyên nhân gốc**: RLS ban đầu chỉ cấu hình `for select to authenticated`. Nếu frontend không đăng nhập (kết nối với role `anon`), Postgres chặn không trả về dòng dữ liệu nào (`[]`) và Supabase Realtime không phát event tới client.
+- **Cách sửa**:
+  1. Tạo migration `20260905013000_allow_anon_read.sql` cấp quyền `SELECT` cho role `anon` trên cả 3 bảng (`reference_stock`, `scanned_data`, `scan_audit_log`).
+  2. Các quyền ghi trực tiếp (`INSERT`/`UPDATE`/`DELETE`) của `anon` vẫn bị RLS chặn chặt chẽ; mọi thao tác ghi dữ liệu chỉ được thực hiện qua RPC / Edge Functions dùng `service_role`.
+  3. Gỡ bỏ `AuthModal`, nút đăng nhập, banner cảnh báo đăng nhập khỏi frontend. Hooks tải dữ liệu trực tiếp và lắng nghe Realtime ngay khi mount.
+  4. Cập nhật `qc_phase1.sql` và `qc_phase8.sh` để kiểm thử rằng anon có thể SELECT và không thể ghi trực tiếp.
+- **Bằng chứng đã hết lỗi**: Cả 8/8 QC gates đều PASS. Vitest 11 files 35/35 tests PASS, lint clean, build clean.
+- **Cách phòng tránh lần sau**: Với các ứng dụng kiosk/kho quét mã không yêu cầu định danh người dùng từng lượt quét, luôn mở RLS SELECT cho `anon` để Realtime và bảng đối chiếu hoạt động trơn tru.
+
