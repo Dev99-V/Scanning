@@ -18,8 +18,8 @@ vi.mock('../../lib/supabase', () => ({
 }));
 
 const ROWS = [
-  { batch_id: 'TAG001', stock_code: '3400010001', warehouse: '01', bin: 'C4', qty: 1000, previous_qty: null, create_date: '2026-09-04' },
-  { batch_id: 'TAG002', stock_code: '3400010002', warehouse: '61', bin: 'C2', qty: 900, previous_qty: null, create_date: '2026-09-04' },
+  { batch_id: 'TAG001', stock_code: '3400010001', warehouse: '01', bin: '200202', qty: 1000, previous_qty: null, create_date: '2026-09-04' },
+  { batch_id: 'TAG002', stock_code: '3400010002', warehouse: '61', bin: '100101', qty: 900, previous_qty: null, create_date: '2026-09-04' },
 ];
 
 function thenable() {
@@ -51,20 +51,65 @@ describe('ReferenceDataTable', () => {
     expect(screen.getByText('TAG002')).toBeInTheDocument();
   });
 
-  it('lọc thông minh với tiền tố WH cho kho và tìm kiếm thông thường', async () => {
+  it('ô 1 chỉ tìm Tag ID và Stock Code (không tìm bin)', async () => {
     render(<ReferenceDataTable />);
     await screen.findByText('3400010001');
 
-    // Lọc thông minh theo Kho với tiền tố WH
     const smartInput = screen.getByLabelText('Tìm kiếm thông minh');
-    fireEvent.change(smartInput, { target: { value: 'WH01' } });
+
+    // Tìm theo Stock Code
+    fireEvent.change(smartInput, { target: { value: '3400010001' } });
     expect(screen.getByText('3400010001')).toBeInTheDocument();
     expect(screen.queryByText('3400010002')).not.toBeInTheDocument();
 
-    // Lọc thông thường theo Tag ID
+    // Tìm theo Tag ID
     fireEvent.change(smartInput, { target: { value: 'TAG002' } });
     expect(screen.getByText('3400010002')).toBeInTheDocument();
     expect(screen.queryByText('3400010001')).not.toBeInTheDocument();
+
+    // Gõ bin (200202) vào ô 1 sẽ KHÔNG ra dòng nào vì ô 1 không tìm Bin
+    fireEvent.change(smartInput, { target: { value: '200202' } });
+    expect(screen.queryByText('TAG001')).not.toBeInTheDocument();
+    expect(screen.queryByText('TAG002')).not.toBeInTheDocument();
+  });
+
+  it('ô 2 tìm Kho (WH) linh hoạt (01, WH01)', async () => {
+    render(<ReferenceDataTable />);
+    await screen.findByText('3400010001');
+
+    const whInput = screen.getByLabelText('Lọc theo kho');
+
+    // Tìm kho với prefix WH
+    fireEvent.change(whInput, { target: { value: 'WH01' } });
+    expect(screen.getByText('TAG001')).toBeInTheDocument();
+    expect(screen.queryByText('TAG002')).not.toBeInTheDocument();
+
+    // Tìm kho 61
+    fireEvent.change(whInput, { target: { value: '61' } });
+    expect(screen.getByText('TAG002')).toBeInTheDocument();
+    expect(screen.queryByText('TAG001')).not.toBeInTheDocument();
+  });
+
+  it('ô 3 lọc các dữ liệu đầu của cột Bin (bắt đầu bằng prefix 10 hoặc 20)', async () => {
+    render(<ReferenceDataTable />);
+    await screen.findByText('3400010001');
+
+    const binInput = screen.getByLabelText('Lọc theo vị trí');
+
+    // Gõ 20 sẽ lọc ra bin bắt đầu bằng 20 (200202)
+    fireEvent.change(binInput, { target: { value: '20' } });
+    expect(screen.getByText('TAG001')).toBeInTheDocument();
+    expect(screen.queryByText('TAG002')).not.toBeInTheDocument();
+
+    // Gõ 10 sẽ lọc ra bin bắt đầu bằng 10 (100101)
+    fireEvent.change(binInput, { target: { value: '10' } });
+    expect(screen.getByText('TAG002')).toBeInTheDocument();
+    expect(screen.queryByText('TAG001')).not.toBeInTheDocument();
+
+    // Gõ chuỗi không phải tiền tố (ví dụ 0202 nằm ở giữa) sẽ không khớp
+    fireEvent.change(binInput, { target: { value: '0202' } });
+    expect(screen.queryByText('TAG001')).not.toBeInTheDocument();
+    expect(screen.queryByText('TAG002')).not.toBeInTheDocument();
   });
 
   it('mở modal sửa số lượng và hiển thị note số lượng cũ cùng vị trí', async () => {
@@ -124,10 +169,10 @@ describe('ReferenceDataTable', () => {
       expect(onBinUpdated).toHaveBeenCalledWith('TAG001', 'C9-NEW');
     });
 
-    // Sau khi sửa, hiển thị vị trí mới C9-NEW và note lại vị trí cũ (cũ: C4)
+    // Sau khi sửa, hiển thị vị trí mới C9-NEW và note lại vị trí cũ (cũ: 200202)
     await waitFor(() => {
       expect(screen.getByText('C9-NEW')).toBeInTheDocument();
-      expect(screen.getByText('(cũ: C4)')).toBeInTheDocument();
+      expect(screen.getByText('(cũ: 200202)')).toBeInTheDocument();
     });
   });
 
@@ -137,7 +182,7 @@ describe('ReferenceDataTable', () => {
         id: 's1',
         batch_id: 'TAG001',
         qty: 1000,
-        bin: 'C4',
+        bin: '200202',
         stock_code: '3400010001',
         status: 'ok' as const,
         resolution: null,
@@ -171,7 +216,7 @@ describe('ReferenceDataTable', () => {
         id: 's1',
         batch_id: 'TAG001',
         qty: 1000,
-        bin: 'C4',
+        bin: '200202',
         stock_code: '3400010001',
         status: 'ok' as const,
         resolution: null,

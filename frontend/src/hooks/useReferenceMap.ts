@@ -60,10 +60,18 @@ export function useReferenceMap() {
     });
   }, []);
 
+  const addBatch = useCallback((batchId: string, item: SystemNumbers) => {
+    setByBatch((prev) => {
+      const next = new Map(prev);
+      next.set(batchId, item);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
 
-  return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin };
+  return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin, addBatch };
 }
 

@@ -256,8 +256,51 @@
   - Vitest 11 files với 44/44 tests PASS; `oxlint` 0 lỗi 0 cảnh báo; `tsc -b && vite build` thành công.
   - Toàn bộ QC gates liên quan (Phase 5, Phase 6, Phase 8) đều PASS (Exit 0).
 
+### [2026-09-05] Thêm Thẻ hoạt động Thêm Dữ Liệu Nguồn Mới ở Bảng 2 với gợi ý thông minh
 
+- **Khu vực**: Database RPC migration (`migrations/20260905050000_add_reference_stock.sql`), Component thẻ hoạt động ([ReferenceAddCard.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceAddCard.tsx)), [ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx), [useReferenceMap.ts](file:///workspaces/Scaning/frontend/src/hooks/useReferenceMap.ts), [App.tsx](file:///workspaces/Scaning/frontend/src/App.tsx), Unit Tests ([ReferenceAddCard.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReferenceAddCard.test.tsx)).
+- **Yêu cầu người dùng**: Thêm 1 thẻ hoạt động ở Bảng 2 để add thêm các dữ liệu mới tương ứng với dữ liệu nguồn:
+  - Stock Code: dropdown tự động gợi ý dữ liệu có trong bảng trước đó, điền đến đâu gợi ý đến đó.
+  - Kho (Warehouse): dropdown tự động gợi ý kho có trong bảng, điền đến đâu gợi ý đến đó.
+  - Ngày tạo: tự động chọn ngày add (hôm nay).
+  - Vị trí (Bin), Số lượng, Tag ID (Batch): bắt buộc nhập tay.
+- **Nguyên nhân & Giải pháp kiến trúc**:
+  1. Do RLS chặn quyền ghi trực tiếp (`INSERT`) của role `anon` trên `reference_stock`, toàn bộ thao tác thêm bản ghi nguồn được đóng gói trong RPC `public.add_reference_stock(p_batch_id, p_stock_code, p_warehouse, p_bin, p_qty, p_create_date, p_overwrite)` với quyền `SECURITY DEFINER`.
+  2. RPC kiểm tra trùng `batch_id`: nếu đã có thì cảnh báo kèm thông tin chi tiết của bản ghi cũ và hỗ trợ tùy chọn `p_overwrite = true` nếu người dùng muốn ghi đè.
+  3. Khi thêm mới thành công, RPC tự động rà soát `scanned_data` để chuyển các lượt quét có cùng `batch_id` từ `not_in_reference` sang `ok` (hoặc `mismatch` nếu số lượng/vị trí lệch).
+  4. Xây dựng component `ReferenceAddCard.tsx`:
+     - Tự động trích xuất danh sách `allStockCodes` và `allWarehouses` duy nhất từ `existingRows`.
+     - Bộ lọc tìm kiếm thông minh: khi focus hoặc gõ phím, hiển thị dropdown danh sách gợi ý realtime, click chọn sẽ tự động điền giá trị.
+     - Ô ngày tạo tự động gán `YYYY-MM-DD` hiện tại (read-only).
+     - Các ô Tag ID, Bin, Số lượng bắt buộc người dùng gõ tay kèm validation chặt chẽ.
+  5. Hook `useReferenceMap.ts` bổ sung hàm `addBatch`, `App.tsx` lắng nghe `onReferenceAdded` để cập nhật đồng thời bộ nhớ đệm và kích hoạt refetch Bảng 1.
+- **Bằng chứng đã hết lỗi**:
+  - Test migration transaction thành công trên Postgres local; kiểm tra validate rỗng, trùng lặp, và ghi đè.
+  - Viết 6 unit test trong `ReferenceAddCard.test.tsx` (kiểm tra render, dropdown gợi ý stock code, dropdown kho, validate, submit thành công, và cảnh báo trùng).
+  - Tổng số 12 test files của Frontend Vitest với 50/50 tests PASS.
+  - `oxlint` 0 lỗi 0 cảnh báo, `tsc -b && vite build` thành công.
+  - QC Phase 5, Phase 6, Phase 8 đều PASS (Exit 0).
 
+### [2026-09-05] Nâng cấp bộ lọc Bảng 2: Ô 1 tìm Tag ID/Stock Code, Ô 2 tìm Kho, Ô 3 lọc đầu Bin (tiền tố startsWith)
+
+- **Khu vực**: Frontend Bảng 2 ([ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx)), Unit Tests ([ReferenceDataTable.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReferenceDataTable.test.tsx)).
+- **Yêu cầu người dùng**:
+  1. Ở phần lọc Bin bảng số 2, khi lọc 10 hoặc 20 sẽ tự động hiểu để lọc các dữ liệu đầu của cột Bin (ví dụ đang có 200202 điền 20 sẽ lọc toàn bộ các bin bắt đầu bằng 20).
+  2. Ở mục dò tìm đầu tiên không cần tìm bin, chỉ cần tìm tag id và stock code.
+  3. Ô thứ 2 thì dùng để tìm wh (Kho).
+- **Nguyên nhân & Giải pháp kiến trúc**:
+  1. Trước đây, việc tìm kiếm gộp cả Bin và Kho vào Ô 1 gây nhiễu khi người dùng muốn tra cứu độc lập theo từng tiêu chí, đồng thời việc lọc Bin trước đó tìm kiếm chính xác tuyệt đối qua query API hoặc tìm kiếm chuỗi con toàn phần khiến khi gõ `20` không thể gom nhóm các Bin bắt đầu bằng `20` (như `200202`).
+  2. Giải pháp:
+     - Chuyển việc lọc sang in-memory trên toàn bộ danh sách `rows` đã nạp (khoảng 2721 dòng) giúp phản hồi tức thì dưới 1ms mà không gây nghẽn kết nối mạng Supabase.
+     - Ô 1 (`smartFilter`): Chỉ tìm kiếm theo `batch_id` (Tag ID) và `stock_code` (Mã hàng), loại bỏ hoàn toàn việc tìm Bin và prefix WH ở ô này.
+     - Ô 2 (`warehouse`): Chuyên biệt tìm kiếm theo Kho (`WH`), hỗ trợ linh hoạt người dùng gõ cả tiền tố `WH01` lẫn số `01`, `61`.
+     - Ô 3 (`bin`): Sử dụng `rowBin.startsWith(binTerm)` để lọc chính xác theo các ký tự đầu (prefix) của cột Bin. Ví dụ: nhập `20` sẽ lọc ra tất cả các vị trí bắt đầu bằng `20` như `200202`, `200101`; nhập `10` sẽ lọc ra `100101`.
+     - Bảo đảm giữ nguyên các thuộc tính `aria-label` quan trọng (`Lọc theo kho`, `Lọc theo vị trí`, `Tìm kiếm thông minh`) cho accessibility và kiểm thử gate script `qc_phase6.sh`.
+- **Bằng chứng đã hết lỗi**:
+  - Viết các test case chi tiết trong `ReferenceDataTable.test.tsx` kiểm thử: Ô 1 chỉ tìm Tag ID và Mã hàng (gõ bin không khớp); Ô 2 tìm WH (linh hoạt); Ô 3 lọc tiền tố đầu cột Bin (`20` khớp `200202`, `10` khớp `100101`, số ở giữa không khớp).
+  - Toàn bộ 12 test files của Vitest với 52/52 tests PASS.
+  - `oxlint` 0 warnings 0 errors; `tsc -b && vite build` thành công trong 2.17s.
+  - Các script kiểm định chất lượng: `qc_phase5.sh`, `qc_phase6.sh`, `qc_phase8.sh` đều PASS (Exit 0).
 
 
 

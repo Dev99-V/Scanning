@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
+import ReferenceAddCard from './ReferenceAddCard';
 import ReferenceImportCard from './ReferenceImportCard';
 
 export interface ReferenceLine {
@@ -22,12 +23,14 @@ interface ReferenceDataTableProps {
   scannedRows?: ScanRow[];
   onQtyUpdated?: (batchId: string, newQty: number) => void;
   onBinUpdated?: (batchId: string, newBin: string) => void;
+  onReferenceAdded?: (newRow: ReferenceLine) => void;
 }
 
 export default function ReferenceDataTable({
   scannedRows = [],
   onQtyUpdated,
   onBinUpdated,
+  onReferenceAdded,
 }: ReferenceDataTableProps = {}) {
   const [rows, setRows] = useState<ReferenceLine[]>([]);
   const [smartFilter, setSmartFilter] = useState('');
@@ -174,18 +177,10 @@ export default function ReferenceDataTable({
       let from = 0;
       const all: ReferenceLine[] = [];
       while (!cancelled) {
-        let q = supabase
+        const q = supabase
           .from('reference_stock')
           .select('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date')
           .order('stock_code', { ascending: true });
-
-        if (warehouse.trim()) {
-          const cleanWh = warehouse.trim().replace(/^wh[\s:-]*/i, '');
-          q = q.eq('warehouse', cleanWh);
-        }
-        if (bin.trim()) {
-          q = q.eq('bin', bin.trim());
-        }
 
         const res = await (q.range ? q.range(from, from + step - 1) : q);
         const data = res?.data;
@@ -205,40 +200,59 @@ export default function ReferenceDataTable({
     return () => {
       cancelled = true;
     };
-  }, [warehouse, bin, refreshTrigger]);
+  }, [refreshTrigger]);
 
-  // Bộ lọc thông minh kết hợp lọc dòng đã khớp Bảng 1:
-  // "bộ lọc phải được thiết lập thông minh khi lọc stock code hoặc bất kì trường nào trong bảng
-  // sẽ được tự động dò tìm theo đúng trường dữ liệu đó riêng WH sẽ phải thêm WH ở trước sau đó điền theo dữ liệu trong bảng mới lọc được"
+  // Bộ lọc kết hợp:
+  // 1. smartFilter (ô 1): chỉ tìm Tag ID và Mã hàng (Stock Code), không tìm Bin
+  // 2. warehouse (ô 2): dùng riêng để tìm Kho (WH)
+  // 3. bin (ô 3): lọc các dữ liệu đầu của cột Bin (bắt đầu bằng prefix, vd: gõ 20 lọc 200202)
   const filteredRows = useMemo(() => {
     let list = rows;
+
+    // Lọc dòng đã khớp nếu bật toggle
     if (matchedOnlyFilter) {
       list = list.filter((r) => isRowMatched(r));
     }
-    if (!smartFilter.trim()) return list;
-    const term = smartFilter.trim();
 
-    // Nếu bắt đầu bằng WH (case-insensitive): dò tìm theo Warehouse
-    if (/^wh/i.test(term)) {
-      const whTerm = term.replace(/^wh[\s:-]*/i, '').toLowerCase();
-      return list.filter((r) => r.warehouse.toLowerCase().includes(whTerm));
+    // Ô thứ 2: Dùng để tìm WH (Kho)
+    if (warehouse.trim()) {
+      const whTerm = warehouse.trim().toLowerCase();
+      const cleanWhTerm = whTerm.replace(/^wh[\s:-]*/i, '');
+      list = list.filter((r) => {
+        const rowWh = (r.warehouse || '').toLowerCase();
+        const cleanRowWh = rowWh.replace(/^wh[\s:-]*/i, '');
+        return (
+          rowWh.includes(whTerm) ||
+          cleanRowWh.includes(cleanWhTerm) ||
+          rowWh.includes(cleanWhTerm)
+        );
+      });
     }
 
-    // Các trường hợp khác: tự động dò tìm theo Stock Code, Batch/Tag ID, Bin, Qty, Ngày tạo hoặc từ khóa "khớp"
-    const lower = term.toLowerCase();
-    const isSearchingMatched = lower === 'khớp' || lower === 'đã khớp' || lower === 'da khop';
+    // Ô thứ 3: Lọc Bin — tự động hiểu để lọc các dữ liệu đầu của cột Bin (bắt đầu bằng)
+    if (bin.trim()) {
+      const binTerm = bin.trim().toLowerCase();
+      list = list.filter((r) => {
+        const rowBin = (r.bin || '').trim().toLowerCase();
+        return rowBin.startsWith(binTerm);
+      });
+    }
 
-    return list.filter((r) => {
-      if (isSearchingMatched && isRowMatched(r)) return true;
-      return (
-        r.stock_code.toLowerCase().includes(lower) ||
-        r.batch_id.toLowerCase().includes(lower) ||
-        r.bin.toLowerCase().includes(lower) ||
-        String(r.qty).includes(lower) ||
-        (r.create_date ? r.create_date.toLowerCase().includes(lower) : false)
-      );
-    });
-  }, [rows, smartFilter, matchedOnlyFilter, isRowMatched]);
+    // Ô thứ 1: Mục dò tìm đầu tiên — không tìm bin, chỉ tìm Tag ID và Mã hàng (Stock Code)
+    if (smartFilter.trim()) {
+      const term = smartFilter.trim().toLowerCase();
+      const isSearchingMatched = term === 'khớp' || term === 'đã khớp' || term === 'da khop';
+      list = list.filter((r) => {
+        if (isSearchingMatched && isRowMatched(r)) return true;
+        return (
+          r.stock_code.toLowerCase().includes(term) ||
+          r.batch_id.toLowerCase().includes(term)
+        );
+      });
+    }
+
+    return list;
+  }, [rows, smartFilter, warehouse, bin, matchedOnlyFilter, isRowMatched]);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const target = e.currentTarget;
@@ -249,8 +263,6 @@ export default function ReferenceDataTable({
   }
 
   const displayedRows = filteredRows.slice(0, visibleCount);
-  const isWhFilterActive = /^wh/i.test(smartFilter.trim());
-  const activeWhQuery = isWhFilterActive ? smartFilter.trim().replace(/^wh[\s:-]*/i, '') : '';
 
   function formatDate(dStr?: string | null) {
     if (!dStr) return '—';
@@ -265,8 +277,17 @@ export default function ReferenceDataTable({
 
   return (
     <section aria-label="Dữ liệu hệ thống" className="flex flex-col gap-4">
-      {/* Thẻ Import file nguồn */}
-      <ReferenceImportCard onImportSuccess={() => setRefreshTrigger((prev) => prev + 1)} />
+      {/* Khu vực thẻ hoạt động Bảng 2: Import file nguồn & Thêm dữ liệu nguồn mới */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ReferenceImportCard onImportSuccess={() => setRefreshTrigger((prev) => prev + 1)} />
+        <ReferenceAddCard
+          existingRows={rows}
+          onAddSuccess={(newRow) => {
+            setRows((prev) => [newRow, ...prev]);
+            onReferenceAdded?.(newRow);
+          }}
+        />
+      </div>
 
       {/* Bảng dữ liệu nguồn tra cứu */}
       <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 shadow-lg">
@@ -293,7 +314,7 @@ export default function ReferenceDataTable({
 
           {/* Hàng bộ lọc: Bộ lọc thông minh & Lọc kho / vị trí & Nút lọc nhanh đã khớp */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-            {/* Bộ lọc thông minh chính */}
+            {/* Ô 1: Dò tìm Tag ID hoặc Stock Code */}
             <div className="relative md:col-span-1">
               <input
                 aria-label="Tìm kiếm thông minh"
@@ -303,36 +324,31 @@ export default function ReferenceDataTable({
                   setSmartFilter(e.target.value);
                   setVisibleCount(100);
                 }}
-                placeholder="🔍 Dò tìm (Mã, Tag, Bin... hoặc WH01 lọc kho)"
+                placeholder="🔍 Tìm Tag ID hoặc Stock Code..."
                 className="w-full rounded-xl border border-indigo-500/40 bg-black/50 p-2.5 font-mono text-xs text-cyan-300 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
               />
-              {isWhFilterActive && (
-                <span className="absolute right-2 top-2.5 rounded bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                  Kho: {activeWhQuery || 'Tất cả'}
-                </span>
-              )}
             </div>
 
-            {/* Lọc theo kho */}
+            {/* Ô 2: Dùng để tìm WH (Kho) */}
             <div>
               <input
                 aria-label="Lọc theo kho"
                 type="text"
                 value={warehouse}
                 onChange={(e) => setWarehouse(e.target.value)}
-                placeholder="Lọc theo kho (vd WH01 hoặc 01)"
+                placeholder="🏢 Tìm Kho (WH) (vd 01, 50, WH01)..."
                 className="w-full rounded-xl border border-white/10 bg-black/50 p-2.5 font-mono text-xs text-cyan-300 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
               />
             </div>
 
-            {/* Lọc theo vị trí */}
+            {/* Ô 3: Lọc Bin — tự động hiểu để lọc các dữ liệu đầu của cột Bin (bắt đầu bằng) */}
             <div>
               <input
                 aria-label="Lọc theo vị trí"
                 type="text"
                 value={bin}
                 onChange={(e) => setBin(e.target.value)}
-                placeholder="Lọc theo vị trí (vd C4)"
+                placeholder="📍 Lọc đầu Bin (vd: 10, 20)..."
                 className="w-full rounded-xl border border-white/10 bg-black/50 p-2.5 font-mono text-xs text-cyan-300 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none"
               />
             </div>

@@ -13,7 +13,7 @@ import { useScannedData } from './hooks/useScannedData';
 
 export default function App() {
   const { rows, refetch } = useScannedData();
-  const { byBatch, updateBatchQty, updateBatchBin } = useReferenceMap();
+  const { byBatch, updateBatchQty, updateBatchBin, addBatch } = useReferenceMap();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
 
   // Thống kê nhanh trạng thái quét (chống trùng lặp id)
@@ -120,6 +120,14 @@ export default function App() {
         onQtyUpdated={updateBatchQty}
         onBinUpdated={(batchId, newBin) => {
           updateBatchBin(batchId, newBin);
+          void refetch();
+        }}
+        onReferenceAdded={(newRow) => {
+          addBatch(newRow.batch_id, {
+            stock_code: newRow.stock_code,
+            qty: newRow.qty,
+            bin: newRow.bin,
+          });
           void refetch();
         }}
       />
