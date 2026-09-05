@@ -1,6 +1,6 @@
 {
   "project_name": "pda-scan-reconciliation-system",
-  "last_updated": "2026-09-04",
+  "last_updated": "2026-09-05",
   "read_before_start": [
     "Plan.md",
     "Skills.md",
@@ -127,5 +127,5 @@
       }
     }
   },
-  "notes_for_next_session": "ALL GREEN 2026-09-04: backend-deploy run 33854239993 SUCCESS (test 3 gates + deploy link/push/functions); frontend live https://dev99-v.github.io/Scaning/; cloud reconciled + reference 2721. Lỗi Link user thấy là run cũ 33852944365 (trước khi có secret) — không cần sửa. Token GitHub tạm đã xóa; NHẮC USER REVOKE cả 2 token + regenerate service_role. Việc nhỏ còn lại: đổi <title>frontend</title>."
+  "notes_for_next_session": "2026-09-05: Đã fix lỗi import file Stock Balance With Batch (2).xlsx (nhận diện header động, khử trùng batch_id trước upsert tránh lỗi Postgres 21000) và fix lỗi Bảng 1 không hiển thị dữ liệu quét (thêm AuthModal đăng nhập/đăng ký Supabase Auth, lắng nghe onAuthStateChange, truyền onScanned re-fetch tức thì). Cả 8/8 QC gates đều PASS. Vitest 12 files 39/39 tests PASS, npm run lint 0 warning, build thành công."
 }

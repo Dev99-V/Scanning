@@ -28,6 +28,28 @@
 
 ## Nhật ký
 
+### [2026-09-05] Khắc phục lỗi Import file nguồn mẫu (2).xlsx và lỗi Bảng 1 không hiển thị dữ liệu quét
+
+- **Khu vực**: Edge Function `import-reference`, `ReferenceImportCard.tsx`, Frontend Authentication (`AuthModal.tsx`, `App.tsx`, `useScannedData.ts`, `useReferenceMap.ts`, `ReferenceDataTable.tsx`)
+- **Triệu chứng**:
+  1. Khi người dùng nạp file `Stock Balance With Batch (2).xlsx` qua giao diện thì hệ thống báo `Lỗi import: Edge Function returned a non-2xx status code`.
+  2. Khi quét mã PDA, Supabase Table Editor trong Dashboard ghi nhận dòng quét nhưng trên giao diện web (Bảng 1 - Danh sách quét & đối chiếu) không hiển thị dữ liệu, hiển thị 0 dòng.
+- **Nguyên nhân gốc**:
+  1. File `Stock Balance With Batch (2).xlsx` có tiêu đề ở dòng 2 (thay vì dòng 5 như file cũ), cột D bị trống (BATCH dời sang cột E, BIN cột F, Qty cột G), và trong file có 418 mã BATCH trùng nhau (mã che `******000832` ở kho 50). Logic cũ khóa cứng header dòng 5 và nạp mảng trùng vào PostgreSQL `ON CONFLICT (batch_id) DO UPDATE` gây lỗi Postgres `21000: ON CONFLICT DO UPDATE command cannot affect row a second time`. Thêm vào đó, `ReferenceImportCard.tsx` chưa trích xuất `error.context.json()` nên nuốt mất thông điệp chi tiết của backend.
+  2. Toàn bộ schema cơ sở dữ liệu và RLS policies của hệ thống được cấu hình theo `Plan.md` §3 và §10 chỉ cấp quyền `SELECT` cho vai trò `authenticated`. Tuy nhiên, frontend trước đó hoàn toàn không có module / giao diện đăng nhập (Login/Sign-in) nên người dùng luôn ở vai trò `anon`. Khi client gửi truy vấn đọc `scanned_data` và `reference_stock`, Postgres RLS chặn `anon` và trả về 0 dòng rỗng. Đồng thời Supabase Realtime cũng từ chối gửi event `postgres_changes` cho `anon`. Ngoài ra, `App.tsx` chưa truyền `onScanned` callback cho `PdaScanModal` để re-fetch tức thì.
+- **Cách sửa**:
+  1. Backend `import-reference/index.ts`: Quét động 15 dòng đầu tìm dòng tiêu đề chứa đủ các cột (`Stock Code`, `Warehouse`, `BATCH`, `BIN`, `Qty`), tự động map chỉ mục cột (chấp nhận cột trống/lệch cột), và dùng `Map` khử trùng `batch_id` trước khi chunking để loại trừ hoàn toàn lỗi Postgres 21000.
+  2. Frontend `ReferenceImportCard.tsx`: Bắt context JSON trả về từ Edge Function để hiển thị chi tiết nguyên nhân nếu có lỗi, và cập nhật thông báo import hiển thị số batch duy nhất nạp thành công.
+  3. Frontend `AuthModal.tsx` & `App.tsx`: Xây dựng modal đăng nhập / đăng ký tài khoản Supabase Auth; hiển thị trạng thái người dùng (email + đăng xuất); hiển thị banner cảnh báo rõ ràng khi chưa đăng nhập để người dùng hiểu quy định bảo mật RLS; truyền `onScanned={refetch}` vào `PdaScanModal` để cập nhật Bảng 1 ngay lập tức khi hoàn thành lượt quét.
+  4. Hooks `useScannedData.ts`, `useReferenceMap.ts`, `ReferenceDataTable.tsx`: Đăng ký lắng nghe `supabase.auth.onAuthStateChange` để tự động tải lại dữ liệu ngay khi người dùng đăng nhập hoặc đăng xuất.
+- **Bằng chứng đã hết lỗi**:
+  - `curl -X POST /functions/v1/import-reference -F "file=@Stock Balance With Batch (2).xlsx"` ➔ `{"ok":true,"data":{"total_rows_in_file":8845,"unique_batches":8055,"upserted":8055,"skipped":0}}`. Kiểm tra DB: 8055 dòng, spot-check TRIM chính xác, re-import ổn định.
+  - Cả 8/8 QC gates chạy thành công liên tiếp (Exit 0): `qc_phase1.sh`, `qc_phase2.sh`, `qc_phase3.sh`, `qc_phase4.sh`, `qc_phase5.sh`, `qc_phase6.sh`, `qc_phase7.sh`, `qc_phase8.sh`.
+  - Toàn bộ 12 test files của Frontend Vitest pass (39/39 tests), `npm run lint` 0 warning, `npm run build` thành công.
+- **Cách phòng tránh lần sau**:
+  - Khi làm việc với file Excel từ các nguồn xuất ERP khác nhau, luôn dò tìm vị trí header và tên cột động thay vì fix cứng số dòng và thứ tự cột.
+  - Với các bảng có RLS yêu cầu `authenticated`, frontend bắt buộc phải có màn hình / nút đăng nhập rõ ràng, không giả định người dùng tự đăng nhập qua công cụ ngoài.
+
 ### [2026-09-04] Tái cấu trúc layout: Thẻ Quét Tag nổi (scantag.html), Stock Code, Thẻ Import và Cuộn 100 dòng
 
 - **Khu vực**: Toàn bộ luồng PDA Scan (Migration DB, Edge Functions, RPC, PdaScanModal, ReconciliationTable, ReferenceDataTable)

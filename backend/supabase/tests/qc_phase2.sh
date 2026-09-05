@@ -35,6 +35,9 @@ fi
 cleanup() { if [ "$STARTED_BY_ME" = "1" ]; then kill "$SERVE_PID" 2>/dev/null || true; fi }
 trap cleanup EXIT
 
+# Dọn sạch reference_stock trước khi test để đảm bảo hermetic
+python3 -c "import psycopg2; con=psycopg2.connect('$DB_URL'); cur=con.cursor(); cur.execute('truncate reference_stock cascade'); con.commit(); con.close()"
+
 echo "--- CHECK 1/3: upload file mẫu ---"
 RESP="$(curl -s -X POST "$FUNC_URL" -F "file=@$XLSX" --max-time 300)" || fail "curl upload failed"
 echo "$RESP" | head -c 500; echo

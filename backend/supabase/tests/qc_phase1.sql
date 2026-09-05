@@ -114,6 +114,7 @@ END $$;
 BEGIN;
 
 -- 7a: insert reference + scanned (status default -> pending) + audit
+DELETE FROM public.reference_stock WHERE batch_id = '999900004299';
 INSERT INTO public.reference_stock
   (batch_id, stock_code, stock_code_raw, warehouse, bin, bin_raw, qty)
 VALUES

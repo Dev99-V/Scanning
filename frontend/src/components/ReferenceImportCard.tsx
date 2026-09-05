@@ -36,21 +36,41 @@ export default function ReferenceImportCard({ onImportSuccess }: ReferenceImport
       });
 
       if (error) {
-        setErrorMessage(`Lỗi import: ${error.message || 'Không thể tải file lên'}`);
+        let msg = error.message;
+        try {
+          const ctx = (error as { context?: Response }).context;
+          if (ctx && typeof ctx.json === 'function') {
+            const errJson = (await ctx.json()) as { error?: { message?: string } } | null;
+            if (errJson?.error?.message) {
+              msg = errJson.error.message;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        setErrorMessage(`Lỗi import: ${msg || 'Không thể tải file lên'}`);
         return;
       }
 
       const body = data as {
         ok?: boolean;
-        data?: { total_records?: number; skipped_rows?: number };
+        data?: {
+          total_rows_in_file?: number;
+          unique_batches?: number;
+          upserted?: number;
+          skipped?: number;
+          total_records?: number;
+          skipped_rows?: number;
+        };
         error?: { message?: string };
       };
 
       if (body?.ok) {
-        const total = body.data?.total_records ?? 0;
-        const skipped = body.data?.skipped_rows ?? 0;
+        const total = body.data?.total_rows_in_file ?? body.data?.total_records ?? 0;
+        const unique = body.data?.unique_batches ?? body.data?.upserted ?? 0;
+        const skipped = body.data?.skipped ?? body.data?.skipped_rows ?? 0;
         setResultMessage(
-          `✅ Import thành công ${total.toLocaleString()} dòng dữ liệu (Bỏ qua: ${skipped} dòng trống/rác).`
+          `✅ Import thành công ${unique.toLocaleString()} batch tồn kho (từ ${total.toLocaleString()} dòng dữ liệu, bỏ qua: ${skipped} dòng trống/lỗi).`
         );
         onImportSuccess?.();
       } else {
@@ -74,7 +94,7 @@ export default function ReferenceImportCard({ onImportSuccess }: ReferenceImport
             <span>📥</span> Thẻ Import File Nguồn (Stock Balance With Batch.xlsx)
           </h3>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Dữ liệu tự động nhận diện từ dòng 5 (Header: Stock Code, Warehouse, CREATEDATE, BATCH, BIN, Qty).
+            Tự động nhận diện dòng tiêu đề (Header: Stock Code, Warehouse, BATCH, BIN, Qty).
           </p>
         </div>
 

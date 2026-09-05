@@ -35,7 +35,7 @@ const mockExistingRow = {
 };
 
 vi.mock('../hooks/useScannedData', () => ({
-  useScannedData: () => ({ rows: [mockExistingRow], loading: false, error: null }),
+  useScannedData: () => ({ rows: [mockExistingRow], loading: false, error: null, refetch: vi.fn() }),
 }));
 vi.mock('../hooks/useReferenceMap', () => ({
   useReferenceMap: () => ({

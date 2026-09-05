@@ -59,7 +59,7 @@ serve(async (req: Request) => {
   } catch {
     return json(400, { ok: false, error: { code: "invalid_excel", message: "File is not a valid .xlsx" } });
   }
-  const ws = wb.Sheets[SHEET_NAME];
+  const ws = wb.Sheets[SHEET_NAME] || wb.Sheets[wb.SheetNames[0]];
   if (!ws) {
     return json(400, {
       ok: false,
@@ -73,28 +73,60 @@ serve(async (req: Request) => {
     defval: null,
   }) as unknown[][];
 
-  // Dòng 1-4 metadata bỏ qua, dòng 5 (index 4) là header thật.
-  if (rows.length < 5) {
-    return json(400, { ok: false, error: { code: "invalid_header", message: "File has fewer than 5 rows, header row 5 missing" } });
+  // Tìm header row linh hoạt trong 15 dòng đầu
+  const reqCols = ["stock code", "warehouse", "batch", "bin", "qty"];
+  let headerRowIdx = -1;
+  const colMap: Record<string, number> = {};
+
+  for (let idx = 0; idx < Math.min(15, rows.length); idx++) {
+    const row = rows[idx];
+    if (!Array.isArray(row)) continue;
+    const rowStr = row.map((c) => String(c ?? "").trim().toLowerCase());
+    const found: Record<string, number> = {};
+    for (const req of reqCols) {
+      const colIdx = rowStr.findIndex((c) => c.includes(req));
+      if (colIdx >= 0) found[req] = colIdx;
+    }
+    if (Object.keys(found).length === reqCols.length) {
+      headerRowIdx = idx;
+      Object.assign(colMap, found);
+      // Optional createdate
+      const cdIdx = rowStr.findIndex((c) => c.includes("createdate") || c.includes("create_date"));
+      if (cdIdx >= 0) colMap["createdate"] = cdIdx;
+      break;
+    }
   }
-  const header = (rows[4] as unknown[]).map((h) => String(h ?? "").trim());
-  const headerOk = EXPECTED_HEADER.every((h, i) => header[i] === h);
-  if (!headerOk) {
+
+  if (headerRowIdx === -1) {
     return json(400, {
       ok: false,
-      error: { code: "invalid_header", message: `Row 5 must be [${EXPECTED_HEADER.join("|")}], got [${header.join("|")}]` },
+      error: {
+        code: "invalid_header",
+        message: "Không tìm thấy dòng tiêu đề chứa các cột: Stock Code, Warehouse, BATCH, BIN, Qty (kiểm tra 15 dòng đầu)",
+      },
     });
   }
 
-  const dataRows = rows.slice(5);
-  const records: Record<string, unknown>[] = [];
+  const dataRows = rows.slice(headerRowIdx + 1);
+  const recordMap = new Map<string, Record<string, unknown>>();
   const skipped: { row: number; reason: string }[] = [];
+
   dataRows.forEach((r, i) => {
-    const excelRow = i + 6; // dòng Excel thật (1-based)
-    const [stockCode, warehouse, createDate, batch, bin, qty] = r as unknown[];
-    if ([stockCode, warehouse, batch, bin, qty].every((v) => v === null || v === undefined || v === "")) return; // dòng trống
+    const excelRow = headerRowIdx + 2 + i; // dòng Excel thật (1-based)
+    const rowArr = r as unknown[];
+    if (!Array.isArray(rowArr)) return;
+
+    const stockCode = rowArr[colMap["stock code"]];
+    const warehouse = rowArr[colMap["warehouse"]];
+    const createDate = colMap["createdate"] !== undefined ? rowArr[colMap["createdate"]] : null;
+    const batch = rowArr[colMap["batch"]];
+    const bin = rowArr[colMap["bin"]];
+    const qty = rowArr[colMap["qty"]];
+
+    if ([stockCode, warehouse, batch, bin, qty].every((v) => v === null || v === undefined || String(v).trim() === "")) return; // dòng trống
+
     const batchId = asText(batch)?.trim() ?? "";
-    if (!batchId) {
+    if (!batchId || batchId.toLowerCase() === "none") {
       skipped.push({ row: excelRow, reason: "empty BATCH" });
       return;
     }
@@ -112,7 +144,8 @@ serve(async (req: Request) => {
       const d = new Date(String(createDate));
       if (!isNaN(d.getTime())) createIso = d.toISOString();
     }
-    records.push({
+
+    recordMap.set(batchId, {
       batch_id: batchId,
       stock_code: rawStock.trim(),
       stock_code_raw: rawStock,
@@ -124,6 +157,7 @@ serve(async (req: Request) => {
     });
   });
 
+  const records = Array.from(recordMap.values());
   const supabase = createClient(supabaseUrl, serviceKey);
   let upserted = 0;
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
@@ -139,6 +173,7 @@ serve(async (req: Request) => {
     ok: true,
     data: {
       total_rows_in_file: dataRows.length,
+      unique_batches: records.length,
       upserted,
       skipped: skipped.length,
       skipped_rows: skipped.slice(0, 20),
