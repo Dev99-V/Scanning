@@ -38,9 +38,20 @@ export function useReferenceMap() {
     }
   }, []);
 
+  const updateBatchQty = useCallback((batchId: string, newQty: number) => {
+    setByBatch((prev) => {
+      const next = new Map(prev);
+      const cur = next.get(batchId);
+      if (cur) {
+        next.set(batchId, { ...cur, qty: newQty });
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
 
-  return { byBatch, loading, refetch: load };
+  return { byBatch, loading, refetch: load, updateBatchQty };
 }

@@ -173,4 +173,26 @@
 - **Bằng chứng đã hết lỗi**: Test suite 11 files 36/36 tests PASS; toàn bộ 8/8 QC gates PASS; build clean.
 - **Cách phòng tránh lần sau**: Với các ứng dụng vừa dùng Realtime WebSocket vừa có callback refetch/optimistic update, luôn xử lý cập nhật state dạng Upsert (idempotent theo khóa chính `id`), không bao giờ prepend/append mù quáng.
 
+### [2026-09-05] Xóa lượt quét nhầm qua Modal nổi, cảnh báo đỏ chênh lệch, và chỉnh sửa số lượng nguồn Bảng 2
+
+- **Khu vực**: Database schema (`migrations/20260905024500_delete_scan_and_update_ref_qty.sql`), RPCs (`delete_scanned_row`, `update_reference_qty`), Frontend (`ReconciliationTable.tsx`, `ReferenceDataTable.tsx`, `useReferenceMap.ts`, `App.tsx`).
+- **Triệu chứng & Yêu cầu người dùng**:
+  1. Thêm chức năng xóa dữ liệu trên Bảng 1 khi nhập nhầm, yêu cầu hỏi xác nhận trước khi xóa bằng Modal UI nổi.
+  2. Thêm màu sắc cảnh báo chênh lệch (màu đỏ) đối với các số lượng bị chênh lệch và vị trí bin bị sai giữa thực tế và hệ thống.
+  3. Thêm 1 nút chỉnh sửa số lượng ở Bảng 2 (không có nút xóa), chỉnh sửa đồng bộ với Supabase. Khi sửa không xóa số lượng cũ mà ghi số lượng mới và note lại số lượng trước đó ở cùng vị trí (số lượng cũ note gần nhất: ví dụ 500 sửa về 300 thì hiện 300 note (cũ: 500), sửa tiếp về 200 thì hiện 200 note (cũ: 300)), không cần ghi log cho thao tác này.
+- **Cách sửa**:
+  1. Database Migration `20260905024500_delete_scan_and_update_ref_qty.sql`:
+     - Bổ sung cột `previous_qty numeric` vào bảng `reference_stock` để lưu vết số lượng cũ trước đó một cách bền vững trên DB.
+     - Cập nhật foreign key `scan_audit_log_scanned_id_fkey` sang `ON DELETE SET NULL` để không bị lỗi ràng buộc khi xóa bản ghi `scanned_data`.
+     - Tạo RPC `delete_scanned_row(p_id uuid)` (SECURITY DEFINER): Gỡ FK từ audit log và xóa dòng khỏi `scanned_data`. Cấp quyền execute cho `anon, authenticated, service_role`.
+     - Tạo RPC `update_reference_qty(p_batch_id text, p_new_qty numeric)` (SECURITY DEFINER): Cập nhật `previous_qty = qty, qty = p_new_qty` nguyên tử trong Postgres, không ghi log vào `scan_audit_log`. Cấp quyền execute cho `anon, authenticated, service_role`.
+  2. Frontend Bảng 1 ([ReconciliationTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReconciliationTable.tsx)):
+     - Cột Thao tác: Thêm nút 🗑️ kích hoạt Modal UI nổi xác nhận xóa với đầy đủ chi tiết lượt quét (Tag ID, Stock Code, SL, Bin, Trạng thái) và 2 nút Hủy / Xác nhận xóa.
+     - Màu sắc cảnh báo chênh lệch: Khi `isQtyDiff` (lệch SL) hoặc `isBinDiff` (lệch Bin), highlight các ô và ghi chú bằng tông đỏ `rose` nổi bật (`text-rose-400`, `bg-rose-950/60`, `border-rose-500/60`).
+  3. Frontend Bảng 2 ([ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx)):
+     - Cột Số lượng: Hiển thị số lượng hiện tại, nếu có `previous_qty` thì note ngay cùng vị trí `(cũ: [previous_qty])`.
+     - Nút ✏️ mở Modal UI nổi cho phép gõ số lượng mới, gọi RPC `update_reference_qty`. Cập nhật đồng bộ cả state Bảng 2 và `useReferenceMap` để Bảng 1 tính toán lại đối chiếu tức thì. Không có nút xóa.
+- **Bằng chứng đã hết lỗi**: Cả 8/8 QC gates đều PASS. Vitest 11 files 39/39 tests PASS, lint clean, build clean.
+
+
 

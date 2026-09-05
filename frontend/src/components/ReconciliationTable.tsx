@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import type { ScanStatus } from '../lib/scanApi';
+import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
 
 const STATUS_LABEL: Record<ScanStatus, string> = {
@@ -18,8 +19,8 @@ const STATUS_LABEL: Record<ScanStatus, string> = {
 const STATUS_CLASS: Record<ScanStatus, string> = {
   pending: 'bg-slate-700 text-slate-200 border-slate-600',
   ok: 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40',
-  qty_mismatch: 'bg-amber-950/80 text-amber-300 border-amber-500/40',
-  bin_mismatch: 'bg-amber-950/80 text-amber-300 border-amber-500/40',
+  qty_mismatch: 'bg-rose-950/80 text-rose-300 border-rose-500/50 font-bold',
+  bin_mismatch: 'bg-rose-950/80 text-rose-300 border-rose-500/50 font-bold',
   not_in_reference: 'bg-sky-950/80 text-sky-300 border-sky-500/40',
   duplicate: 'bg-rose-950/80 text-rose-300 border-rose-500/40',
 };
@@ -27,12 +28,35 @@ const STATUS_CLASS: Record<ScanStatus, string> = {
 interface ReconciliationTableProps {
   rows: ScanRow[];
   systemByBatch: Map<string, SystemNumbers>;
+  onRowDeleted?: (id: string) => void;
 }
 
-export default function ReconciliationTable({ rows, systemByBatch }: ReconciliationTableProps) {
+export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [deletingRow, setDeletingRow] = useState<ScanRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+
+  async function handleConfirmDelete() {
+    if (!deletingRow) return;
+    setIsDeleting(true);
+    setDeleteNotice(null);
+    try {
+      const { data, error } = await supabase.rpc('delete_scanned_row', { p_id: deletingRow.id });
+      if (error || !data?.ok) {
+        setDeleteNotice(`❌ Lỗi xóa: ${error?.message || data?.error || 'Không xác định'}`);
+      } else {
+        onRowDeleted?.(deletingRow.id);
+        setDeletingRow(null);
+      }
+    } catch (e) {
+      setDeleteNotice(`❌ Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   // Lọc theo trạng thái và từ khóa tìm kiếm (kèm chống duplicate key)
   const filteredRows = React.useMemo(() => {
@@ -126,7 +150,7 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
         onScroll={handleScroll}
         className="max-h-[500px] overflow-y-auto overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/80 shadow-inner custom-scrollbar"
       >
-        <table className="w-full min-w-[720px] text-left font-mono text-xs">
+        <table className="w-full min-w-[760px] text-left font-mono text-xs">
           <thead className="sticky top-0 z-10 border-b border-white/10 bg-slate-950 text-slate-400 shadow">
             <tr>
               <th className="px-3 py-3">STOCK CODE</th>
@@ -137,6 +161,7 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
               <th className="px-3 py-3 text-right">BIN HỆ THỐNG</th>
               <th className="px-3 py-3 text-center">TRẠNG THÁI</th>
               <th className="px-3 py-3 text-left">GHI CHÚ / CẢNH BÁO</th>
+              <th className="px-3 py-3 text-center">THAO TÁC</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -174,28 +199,56 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
                   {/* Tag ID */}
                   <td className="px-3 py-2.5 font-bold text-cyan-300">{r.batch_id}</td>
 
-                  {/* Số lượng quét */}
-                  <td className="px-3 py-2.5 text-right font-bold text-white">{r.qty}</td>
-
-                  {/* Số lượng hệ thống (cảnh báo nếu sai lệch) */}
-                  <td
-                    className={`px-3 py-2.5 text-right ${
-                      isQtyDiff ? 'font-bold text-amber-400 underline decoration-amber-400/50' : 'text-slate-400'
-                    }`}
-                  >
-                    {sys ? sys.qty : '—'}
+                  {/* Số lượng quét (màu đỏ cảnh báo nếu chênh lệch) */}
+                  <td className="px-3 py-2.5 text-right">
+                    <span
+                      className={
+                        isQtyDiff
+                          ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                          : 'font-bold text-white'
+                      }
+                    >
+                      {r.qty}
+                    </span>
                   </td>
 
-                  {/* Bin quét */}
-                  <td className="px-3 py-2.5 text-right font-semibold text-slate-200">{r.bin}</td>
+                  {/* Số lượng hệ thống (màu đỏ cảnh báo nếu chênh lệch) */}
+                  <td className="px-3 py-2.5 text-right">
+                    <span
+                      className={
+                        isQtyDiff
+                          ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                          : 'text-slate-400'
+                      }
+                    >
+                      {sys ? sys.qty : '—'}
+                    </span>
+                  </td>
 
-                  {/* Bin hệ thống (cảnh báo nếu sai lệch) */}
-                  <td
-                    className={`px-3 py-2.5 text-right ${
-                      isBinDiff ? 'font-bold text-amber-400 underline decoration-amber-400/50' : 'text-slate-400'
-                    }`}
-                  >
-                    {sys ? sys.bin || '—' : '—'}
+                  {/* Bin quét (màu đỏ cảnh báo nếu sai lệch) */}
+                  <td className="px-3 py-2.5 text-right">
+                    <span
+                      className={
+                        isBinDiff
+                          ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                          : 'font-semibold text-slate-200'
+                      }
+                    >
+                      {r.bin}
+                    </span>
+                  </td>
+
+                  {/* Bin hệ thống (màu đỏ cảnh báo nếu sai lệch) */}
+                  <td className="px-3 py-2.5 text-right">
+                    <span
+                      className={
+                        isBinDiff
+                          ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                          : 'text-slate-400'
+                      }
+                    >
+                      {sys ? sys.bin || '—' : '—'}
+                    </span>
                   </td>
 
                   {/* Trạng thái */}
@@ -210,13 +263,31 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
                     </span>
                   </td>
 
-                  {/* Ghi chú cảnh báo */}
+                  {/* Ghi chú cảnh báo (màu đỏ nếu chênh lệch) */}
                   <td className="px-3 py-2.5 text-left text-[11px]">
                     {r.status === 'ok' ? (
                       <span className="text-emerald-400 font-semibold">{note}</span>
+                    ) : isQtyDiff || isBinDiff || r.status === 'qty_mismatch' || r.status === 'bin_mismatch' ? (
+                      <span className="text-rose-400 font-bold">{note}</span>
                     ) : (
                       <span className="text-amber-300/90 font-medium">{note}</span>
                     )}
+                  </td>
+
+                  {/* Thao tác xóa khi nhập nhầm */}
+                  <td className="px-3 py-2.5 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteNotice(null);
+                        setDeletingRow(r);
+                      }}
+                      title="Xóa lượt quét nhầm"
+                      aria-label={`Xóa lượt quét ${r.batch_id}`}
+                      className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-950/60 hover:text-rose-300 active:scale-95"
+                    >
+                      🗑️
+                    </button>
                   </td>
                 </tr>
               );
@@ -244,6 +315,95 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
           </button>
         )}
       </div>
+
+      {/* Modal UI nổi xác nhận xóa khi nhập nhầm */}
+      {deletingRow && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-delete-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+        >
+          <div className="glass-panel relative flex w-full max-w-md flex-col rounded-3xl border border-rose-500/50 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <h3 id="confirm-delete-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
+                    Xác Nhận Xóa Lượt Quét
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
+                    Xóa dữ liệu do nhập nhầm
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingRow(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3 text-xs">
+              <p className="text-slate-300">
+                Bạn có chắc chắn muốn xóa lượt quét này? Dữ liệu sẽ được loại bỏ khỏi hệ thống và đối chiếu lại ngay lập tức.
+              </p>
+
+              {/* Chi tiết lượt quét */}
+              <div className="space-y-1.5 rounded-2xl border border-white/10 bg-black/60 p-3.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Mã hàng:</span>
+                  <span className="font-bold text-slate-200">{deletingRow.stock_code || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tag ID:</span>
+                  <span className="font-bold text-cyan-300">{deletingRow.batch_id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số lượng:</span>
+                  <span className="font-bold text-white">{deletingRow.qty}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Vị trí Bin:</span>
+                  <span className="font-bold text-emerald-300">{deletingRow.bin}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Trạng thái:</span>
+                  <span className="font-bold text-amber-300">{STATUS_LABEL[deletingRow.status]}</span>
+                </div>
+              </div>
+
+              {deleteNotice && (
+                <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                  {deleteNotice}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingRow(null)}
+                className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => void handleConfirmDelete()}
+                className="rounded-xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-rose-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+              >
+                {isDeleting ? 'Đang xóa...' : '🗑️ Xác nhận xóa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

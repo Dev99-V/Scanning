@@ -39,7 +39,7 @@ const finish = async (ok, msg) => {
 const timer = setTimeout(() => void finish(false, 'QC8_REALTIME_TIMEOUT'), 25000);
 
 const ch = sb
-  .channel('qc8_e2e')
+  .channel(`qc8_e2e_${Date.now()}`)
   .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'scanned_data' }, (p) => {
     if (p.new && p.new.batch_id === BATCH) void finish(true, 'QC8_REALTIME_OK');
   })

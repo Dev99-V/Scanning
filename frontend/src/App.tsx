@@ -13,7 +13,7 @@ import { useScannedData } from './hooks/useScannedData';
 
 export default function App() {
   const { rows, refetch } = useScannedData();
-  const { byBatch } = useReferenceMap();
+  const { byBatch, updateBatchQty } = useReferenceMap();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
 
   // Thống kê nhanh trạng thái quét (chống trùng lặp id)
@@ -106,11 +106,11 @@ export default function App() {
           </div>
         </div>
 
-        <ReconciliationTable rows={rows} systemByBatch={byBatch} />
+        <ReconciliationTable rows={rows} systemByBatch={byBatch} onRowDeleted={() => void refetch()} />
       </section>
 
       {/* Bảng 2: Dữ Liệu Nguồn & Thẻ Import */}
-      <ReferenceDataTable />
+      <ReferenceDataTable onQtyUpdated={updateBatchQty} />
 
       {/* Giao diện nổi Quét Tag (Modal) */}
       <PdaScanModal

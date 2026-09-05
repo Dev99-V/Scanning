@@ -1,7 +1,17 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ReconciliationTable from '../ReconciliationTable';
 import type { ScanRow } from '../../lib/types';
+
+const { rpc } = vi.hoisted(() => ({
+  rpc: vi.fn(),
+}));
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    rpc,
+  },
+}));
 
 function row(partial: Partial<ScanRow> & { id: string; batch_id: string }): ScanRow {
   return {
@@ -14,6 +24,11 @@ function row(partial: Partial<ScanRow> & { id: string; batch_id: string }): Scan
     ...partial,
   };
 }
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  rpc.mockResolvedValue({ data: { ok: true }, error: null });
+});
 
 describe('ReconciliationTable', () => {
   it('hiển thị SL/Bin quét cạnh SL/Bin hệ thống', () => {
@@ -31,6 +46,19 @@ describe('ReconciliationTable', () => {
     expect(tr).toHaveTextContent('C9');
   });
 
+  it('cảnh báo màu đỏ (border-rose/bg-rose) khi lệch số lượng hoặc sai bin', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r1', batch_id: 'B1', qty: 5, bin: 'C4', status: 'qty_mismatch' })]}
+        systemByBatch={new Map([['B1', { qty: 10, bin: 'C4' }]])}
+      />,
+    );
+    const tr = screen.getByTestId('recon-row-r1');
+    // Có thẻ cảnh báo màu đỏ rose
+    const redCells = tr.querySelectorAll('.text-rose-400');
+    expect(redCells.length).toBeGreaterThan(0);
+  });
+
   it('đủ 6 cờ trạng thái inline', () => {
     const statuses = ['pending', 'ok', 'qty_mismatch', 'bin_mismatch', 'not_in_reference', 'duplicate'] as const;
     render(
@@ -45,6 +73,35 @@ describe('ReconciliationTable', () => {
     expect(screen.getByText('Lệch vị trí')).toBeInTheDocument();
     expect(screen.getByText('Ngoài hệ thống')).toBeInTheDocument();
     expect(screen.getByText('Trùng Tag')).toBeInTheDocument();
+  });
+
+  it('bấm nút xóa mở modal UI nổi xác nhận và gọi delete_scanned_row', async () => {
+    const onRowDeleted = vi.fn();
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-del', batch_id: 'TAG_MISTAKE', qty: 3, bin: 'BIN_ERR' })]}
+        systemByBatch={new Map()}
+        onRowDeleted={onRowDeleted}
+      />,
+    );
+
+    // Bấm nút xóa trên dòng
+    const delBtn = screen.getByLabelText('Xóa lượt quét TAG_MISTAKE');
+    fireEvent.click(delBtn);
+
+    // Modal UI nổi xuất hiện
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Xác Nhận Xóa Lượt Quét/i)).toBeInTheDocument();
+    expect(screen.getAllByText('TAG_MISTAKE').length).toBe(2);
+
+    // Bấm xác nhận xóa trong modal
+    const confirmBtn = screen.getByText('🗑️ Xác nhận xóa');
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('delete_scanned_row', { p_id: 'r-del' });
+      expect(onRowDeleted).toHaveBeenCalledWith('r-del');
+    });
   });
 
   it('KHÔNG liệt kê Tag ID chỉ có trong reference (không hiển thị lại Tag nguồn)', () => {

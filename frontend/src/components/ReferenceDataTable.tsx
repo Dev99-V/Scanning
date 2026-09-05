@@ -12,10 +12,15 @@ export interface ReferenceLine {
   warehouse: string;
   bin: string;
   qty: number;
+  previous_qty?: number | null;
   create_date?: string | null;
 }
 
-export default function ReferenceDataTable() {
+interface ReferenceDataTableProps {
+  onQtyUpdated?: (batchId: string, newQty: number) => void;
+}
+
+export default function ReferenceDataTable({ onQtyUpdated }: ReferenceDataTableProps = {}) {
   const [rows, setRows] = useState<ReferenceLine[]>([]);
   const [smartFilter, setSmartFilter] = useState('');
   const [warehouse, setWarehouse] = useState('');
@@ -23,6 +28,53 @@ export default function ReferenceDataTable() {
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(100);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Trạng thái modal chỉnh sửa số lượng (không có nút xóa)
+  const [editingRow, setEditingRow] = useState<ReferenceLine | null>(null);
+  const [editQtyInput, setEditQtyInput] = useState('');
+  const [isSavingQty, setIsSavingQty] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function openEditModal(row: ReferenceLine) {
+    setEditingRow(row);
+    setEditQtyInput(String(row.qty));
+    setEditError(null);
+  }
+
+  async function handleSaveQty() {
+    if (!editingRow) return;
+    const newQ = Number(editQtyInput);
+    if (isNaN(newQ) || newQ < 0) {
+      setEditError('Số lượng phải là một số không âm hợp lệ');
+      return;
+    }
+    setIsSavingQty(true);
+    setEditError(null);
+    try {
+      const { data, error } = await supabase.rpc('update_reference_qty', {
+        p_batch_id: editingRow.batch_id,
+        p_new_qty: newQ,
+      });
+      if (error || !data?.ok) {
+        setEditError(`Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
+      } else {
+        const oldQ = editingRow.qty;
+        setRows((prev) =>
+          prev.map((r) =>
+            r.batch_id === editingRow.batch_id
+              ? { ...r, qty: newQ, previous_qty: oldQ }
+              : r,
+          ),
+        );
+        onQtyUpdated?.(editingRow.batch_id, newQ);
+        setEditingRow(null);
+      }
+    } catch (e) {
+      setEditError(`Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsSavingQty(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +86,7 @@ export default function ReferenceDataTable() {
       while (!cancelled) {
         let q = supabase
           .from('reference_stock')
-          .select('batch_id,stock_code,warehouse,bin,qty,create_date')
+          .select('batch_id,stock_code,warehouse,bin,qty,previous_qty,create_date')
           .order('stock_code', { ascending: true });
 
         if (warehouse.trim()) {
@@ -211,7 +263,30 @@ export default function ReferenceDataTable() {
                       <td className="px-3 py-2 font-bold text-cyan-300">{r.batch_id}</td>
                       <td className="px-3 py-2 text-slate-300">{r.warehouse}</td>
                       <td className="px-3 py-2 text-right font-semibold text-emerald-300">{r.bin}</td>
-                      <td className="px-3 py-2 text-right font-bold text-white">{r.qty}</td>
+
+                      {/* Số lượng mới kèm note số lượng cũ gần nhất tại cùng vị trí + nút Sửa (không có nút xóa) */}
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="text-right">
+                            <span className="font-bold text-white text-xs">{r.qty}</span>
+                            {r.previous_qty !== null && r.previous_qty !== undefined && (
+                              <span className="block text-[10px] font-medium text-amber-400/90">
+                                (cũ: {r.previous_qty})
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(r)}
+                            title="Chỉnh sửa số lượng"
+                            aria-label={`Chỉnh sửa số lượng ${r.batch_id}`}
+                            className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      </td>
+
                       <td className="px-3 py-2 text-center text-slate-400 text-[11px]">{formatDate(r.create_date)}</td>
                     </tr>
                   ))}
@@ -241,6 +316,118 @@ export default function ReferenceDataTable() {
           </div>
         )}
       </div>
+
+      {/* Modal UI nổi chỉnh sửa số lượng Bảng 2 */}
+      {editingRow && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-qty-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+        >
+          <div className="glass-panel relative flex w-full max-w-md flex-col rounded-3xl border border-cyan-500/50 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✏️</span>
+                <div>
+                  <h3 id="edit-qty-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
+                    Chỉnh Sửa Số Lượng Nguồn
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
+                    Cập nhật số lượng đồng bộ Supabase
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingQty}
+                onClick={() => setEditingRow(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3 text-xs">
+              {/* Thông tin mặt hàng */}
+              <div className="space-y-1.5 rounded-2xl border border-white/10 bg-black/60 p-3.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Mã hàng (Stock Code):</span>
+                  <span className="font-bold text-slate-200">{editingRow.stock_code}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tag ID (Batch):</span>
+                  <span className="font-bold text-cyan-300">{editingRow.batch_id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Kho / Vị trí:</span>
+                  <span className="font-bold text-emerald-300">{editingRow.warehouse} / {editingRow.bin}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số lượng hiện tại:</span>
+                  <span className="font-bold text-white text-xs">
+                    {editingRow.qty}
+                    {editingRow.previous_qty !== null && editingRow.previous_qty !== undefined && (
+                      <span className="ml-2 font-normal text-amber-400">(cũ: {editingRow.previous_qty})</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Ô nhập số lượng mới */}
+              <div>
+                <label htmlFor="edit-new-qty-input" className="mb-1.5 block font-bold uppercase tracking-wider text-cyan-400 text-[11px]">
+                  Số lượng mới:
+                </label>
+                <input
+                  id="edit-new-qty-input"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={editQtyInput}
+                  disabled={isSavingQty}
+                  onChange={(e) => setEditQtyInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSaveQty();
+                  }}
+                  autoFocus
+                  className="w-full rounded-xl border-2 border-cyan-500/50 bg-black/70 p-3 text-center font-mono text-xl font-bold text-cyan-300 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                  placeholder="Nhập số lượng mới..."
+                />
+              </div>
+
+              <p className="text-[11px] text-slate-400 italic">
+                * Sau khi lưu, số lượng hiện tại ({editingRow.qty}) sẽ được note lại là số lượng cũ gần nhất ngay tại cột Số lượng.
+              </p>
+
+              {editError && (
+                <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                  {editError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                disabled={isSavingQty}
+                onClick={() => setEditingRow(null)}
+                className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isSavingQty}
+                onClick={() => void handleSaveQty()}
+                className="rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-cyan-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+              >
+                {isSavingQty ? 'Đang lưu...' : '💾 Lưu thay đổi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

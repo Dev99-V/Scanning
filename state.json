@@ -127,5 +127,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-05: Đã khắc phục triệt để hiện tượng nhân đôi dòng tạm thời trên UI: Xử lý idempotent cho INSERT/UPDATE trong useScannedData (chống race condition giữa Realtime WebSocket và HTTP refetch); khử trùng lặp ID trong fetchData, ReconciliationTable, PdaScanModal và stats; cô lập tên channel theo timestamp/random tránh trùng lặp listener. Toàn bộ 8/8 QC gates đều PASS, 36/36 vitest tests PASS, lint clean, build clean."
+  "notes_for_next_session": "2026-09-05: Đã hoàn thiện: 1) Chức năng xóa lượt quét nhầm trên Bảng 1 với Modal UI nổi xác nhận thông tin chi tiết qua RPC delete_scanned_row; 2) Cảnh báo màu đỏ nổi bật cho số lượng chênh lệch và vị trí bin bị sai; 3) Nút chỉnh sửa số lượng ở Bảng 2 (không có nút xóa), cập nhật trực tiếp Supabase qua RPC update_reference_qty, hiển thị số lượng mới và note lại số lượng cũ gần nhất tại cùng vị trí (ví dụ 500 sửa về 300 thì hiện 300 (cũ: 500), sửa về 200 thì hiện 200 (cũ: 300)), không ghi audit log. Toàn bộ 8/8 QC gates PASS, 39/39 vitest tests PASS, lint clean, build clean."
 }
