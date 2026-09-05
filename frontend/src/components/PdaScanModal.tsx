@@ -543,7 +543,10 @@ export default function PdaScanModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {rows.slice(0, 50).map((r) => {
+                  {rows
+                    .filter((r, idx, arr) => arr.findIndex((x) => x.id === r.id) === idx)
+                    .slice(0, 50)
+                    .map((r) => {
                     const badge = STATUS_BADGE[r.status] ?? { text: r.status, bg: 'bg-slate-700' };
                     return (
                       <tr key={r.id} className="hover:bg-white/5">

@@ -21,7 +21,15 @@ export function useScannedData() {
       if (err) {
         setError(err.message);
       } else {
-        setRows((data ?? []) as ScanRow[]);
+        const unique: ScanRow[] = [];
+        const seen = new Set<string>();
+        for (const r of (data ?? []) as ScanRow[]) {
+          if (r?.id && !seen.has(r.id)) {
+            seen.add(r.id);
+            unique.push(r);
+          }
+        }
+        setRows(unique);
         setError(null);
       }
     } catch (e) {
@@ -38,19 +46,42 @@ export function useScannedData() {
     }
     void load();
 
+    // Dùng tên channel riêng biệt kèm timestamp để tránh bị chồng lấn listener khi re-mount
+    const channelTopic = `scanned_data_changes_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const channel = supabase
-      .channel('scanned_data_changes')
+      .channel(channelTopic)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'scanned_data' },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setRows((prev) => [payload.new as ScanRow, ...prev]);
+            const incoming = payload.new as ScanRow;
+            if (!incoming?.id) return;
+            setRows((prev) => {
+              // Chống dup: nếu dòng này đã được nạp qua refetch() hoặc event lặp thì cập nhật thay vì thêm mới
+              const existingIdx = prev.findIndex((r) => r.id === incoming.id);
+              if (existingIdx !== -1) {
+                const next = [...prev];
+                next[existingIdx] = incoming;
+                return next;
+              }
+              return [incoming, ...prev];
+            });
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as ScanRow;
-            setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+            if (!updated?.id) return;
+            setRows((prev) => {
+              const existingIdx = prev.findIndex((r) => r.id === updated.id);
+              if (existingIdx !== -1) {
+                const next = [...prev];
+                next[existingIdx] = updated;
+                return next;
+              }
+              return [updated, ...prev];
+            });
           } else if (payload.eventType === 'DELETE') {
             const gone = payload.old as { id: string };
+            if (!gone?.id) return;
             setRows((prev) => prev.filter((r) => r.id !== gone.id));
           }
         },

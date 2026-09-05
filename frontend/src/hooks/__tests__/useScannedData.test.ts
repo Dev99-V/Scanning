@@ -64,4 +64,22 @@ describe('useScannedData', () => {
     });
     expect(result.current.rows.map((r) => r.id)).toEqual(['a']);
   });
+
+  it('INSERT cùng id không làm nhân đôi dòng (chống race condition giữa Realtime và refetch)', async () => {
+    const { result } = renderHook(() => useScannedData());
+    await act(async () => {});
+    // Giả lập event Realtime phát lần 1
+    act(() => {
+      handler({ eventType: 'INSERT', new: { id: 'dup1', batch_id: 'TAG_DUP' } });
+    });
+    expect(result.current.rows.map((r) => r.id)).toEqual(['dup1', 'a']);
+
+    // Giả lập event lặp hoặc refetch đã có sẵn dòng 'dup1'
+    act(() => {
+      handler({ eventType: 'INSERT', new: { id: 'dup1', batch_id: 'TAG_DUP_UPDATED' } });
+    });
+    // Không bị nhân đôi thành ['dup1', 'dup1', 'a'] mà vẫn là 1 dòng duy nhất được cập nhật
+    expect(result.current.rows.map((r) => r.id)).toEqual(['dup1', 'a']);
+    expect(result.current.rows.find((r) => r.id === 'dup1')?.batch_id).toBe('TAG_DUP_UPDATED');
+  });
 });

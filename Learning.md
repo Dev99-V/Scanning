@@ -152,3 +152,25 @@
 - **Bằng chứng đã hết lỗi**: Cả 8/8 QC gates đều PASS. Vitest 11 files 35/35 tests PASS, lint clean, build clean.
 - **Cách phòng tránh lần sau**: Với Supabase PostgREST, mặc định mỗi query chỉ trả tối đa 1000 records. Với bảng danh mục lớn (như 2721 dòng `reference_stock`), bắt buộc phải dùng vòng lặp `.range()` hoặc RPC phân trang để tải đủ.
 
+### [2026-09-05] Khắc phục hiện tượng nhân đôi dòng tạm thời do race condition giữa Realtime và refetch
+
+- **Khu vực**: Frontend state management (`useScannedData.ts`, `ReconciliationTable.tsx`, `PdaScanModal.tsx`, `App.tsx`).
+- **Triệu chứng**: Sau khi quét tag, trên giao diện Bảng 1 xuất hiện 2 dòng giống hệt nhau. Sau khoảng gần 1 phút (khi có lần quét tiếp theo hoặc re-sync), dữ liệu mới co lại còn 1 dòng.
+- **Nguyên nhân gốc**:
+  1. Khi người dùng submit lượt quét, hai luồng đồng thời diễn ra:
+     - Luồng 1: `onScanned` kích hoạt `refetch()` gửi HTTP GET query trực tiếp bảng `scanned_data`. Do DB đã commit, `refetch()` nhận về dòng mới và set vào state.
+     - Luồng 2: Supabase Realtime phát event `postgres_changes` loại `INSERT` qua WebSocket tới client.
+  2. Trước đó, trong `useScannedData.ts`, event `INSERT` dùng lệnh `setRows((prev) => [payload.new, ...prev])` mà KHÔNG kiểm tra `id` đã tồn tại trong `prev` hay chưa. Khi `refetch()` chạy xong trước, `prev` đã có dòng mới; event Realtime tới sau sẽ chèn thêm một bản sao nữa của chính dòng đó vào mảng state.
+  3. Dưới database Supabase thực tế chỉ có DUY NHẤT 1 DÒNG. Hiện tượng nhân đôi hoàn toàn nằm ở bộ nhớ frontend do 2 luồng (HTTP query và WebSocket push) chồng lấn. Gần 1 phút sau khi người dùng quét mã tiếp theo hoặc token/channel làm mới, một lệnh `refetch()` khác chạy và ghi đè state bằng dữ liệu sạch từ DB, làm bản sao biến mất.
+  4. Ngoài ra, việc dùng tên channel tĩnh `'scanned_data_changes'` có thể dẫn tới việc re-mount trong React giữ lại listener cũ, nhận 2 lần event.
+- **Cách sửa**:
+  1. Trong `useScannedData.ts`:
+     - Xử lý `INSERT` và `UPDATE` theo cơ chế idempotent: kiểm tra `existingIdx = prev.findIndex(r => r.id === incoming.id)`. Nếu đã tồn tại thì cập nhật in-place, tuyệt đối không chèn thêm phần tử mới.
+     - Khử trùng lặp ID trong cả hàm `fetchData()`.
+     - Sinh tên channel độc lập theo timestamp/random (`scanned_data_changes_${Date.now()}_...`) để tránh chồng lấn listener.
+  2. Bổ sung lớp phòng thủ hiển thị (defensive rendering) tại `ReconciliationTable.tsx`, `PdaScanModal.tsx` và `App.tsx` (stats): dùng `seenIds` để bảo đảm giao diện không bao giờ render 2 dòng có cùng `id`.
+  3. Viết unit test mới kiểm thử tính idempotent: `it('INSERT cùng id không làm nhân đôi dòng (chống race condition giữa Realtime và refetch)')`.
+- **Bằng chứng đã hết lỗi**: Test suite 11 files 36/36 tests PASS; toàn bộ 8/8 QC gates PASS; build clean.
+- **Cách phòng tránh lần sau**: Với các ứng dụng vừa dùng Realtime WebSocket vừa có callback refetch/optimistic update, luôn xử lý cập nhật state dạng Upsert (idempotent theo khóa chính `id`), không bao giờ prepend/append mù quáng.
+
+

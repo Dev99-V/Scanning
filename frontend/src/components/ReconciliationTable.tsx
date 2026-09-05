@@ -34,9 +34,14 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Lọc theo trạng thái và từ khóa tìm kiếm
+  // Lọc theo trạng thái và từ khóa tìm kiếm (kèm chống duplicate key)
   const filteredRows = React.useMemo(() => {
+    const seenIds = new Set<string>();
     return rows.filter((r) => {
+      if (r?.id) {
+        if (seenIds.has(r.id)) return false;
+        seenIds.add(r.id);
+      }
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
       if (searchTerm.trim()) {
         const term = searchTerm.trim().toLowerCase();

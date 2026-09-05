@@ -127,5 +127,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-05: Đã hoàn thiện toàn bộ yêu cầu của người dùng: 1) Tự động lookup Stock Code khi scan Tag ID trùng khớp, chỉ hỏi nhập khi ngoài nguồn; 2) Bảng 1 có bộ lọc trạng thái và tìm kiếm nhanh; 3) Export chuẩn XLSX; 4) Bảng 2 phân trang tải ĐỦ toàn bộ dữ liệu nguồn từ Supabase, hiển thị đủ 6 cột chuẩn nguồn, kèm bộ lọc thông minh (tiền tố WH lọc kho, hoặc tự dò tìm qua các trường); 5) Xóa toàn bộ dữ liệu nguồn cũ trong reference_stock trước khi import file mới; 6) Đồng bộ giao diện thanh cuộn cyber dark; 7) Cấu hình AGY CLI auto-accept permissions; 8) Đã tư vấn chi tiết về scan_audit_log. Toàn bộ 8/8 QC gates đều PASS, 35/35 vitest tests PASS, lint clean, build clean."
+  "notes_for_next_session": "2026-09-05: Đã khắc phục triệt để hiện tượng nhân đôi dòng tạm thời trên UI: Xử lý idempotent cho INSERT/UPDATE trong useScannedData (chống race condition giữa Realtime WebSocket và HTTP refetch); khử trùng lặp ID trong fetchData, ReconciliationTable, PdaScanModal và stats; cô lập tên channel theo timestamp/random tránh trùng lặp listener. Toàn bộ 8/8 QC gates đều PASS, 36/36 vitest tests PASS, lint clean, build clean."
 }

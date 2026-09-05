@@ -16,19 +16,24 @@ export default function App() {
   const { byBatch } = useReferenceMap();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
 
-  // Thống kê nhanh trạng thái quét
+  // Thống kê nhanh trạng thái quét (chống trùng lặp id)
   const stats = useMemo(() => {
     let ok = 0;
     let mismatch = 0;
     let notInRef = 0;
     let duplicate = 0;
+    const seenIds = new Set<string>();
     for (const r of rows) {
+      if (r?.id) {
+        if (seenIds.has(r.id)) continue;
+        seenIds.add(r.id);
+      }
       if (r.status === 'ok') ok++;
       else if (r.status === 'qty_mismatch' || r.status === 'bin_mismatch') mismatch++;
       else if (r.status === 'not_in_reference') notInRef++;
       else if (r.status === 'duplicate') duplicate++;
     }
-    return { ok, mismatch, notInRef, duplicate, total: rows.length };
+    return { ok, mismatch, notInRef, duplicate, total: seenIds.size || rows.length };
   }, [rows]);
 
   return (
