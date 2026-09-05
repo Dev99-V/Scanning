@@ -330,3 +330,24 @@
   - Viết 3 unit test mới trong `ReferenceDataTable.test.tsx`: kiểm tra highlight dòng & badge & ô Bin cho lệch vị trí; highlight dòng & badge & ô Qty cho lệch số lượng; kiểm tra hiển thị đồng thời khi lệch cả hai.
   - Toàn bộ 12 test files của Vitest với 55/55 tests PASS.
   - `oxlint` 0 warnings 0 errors; `tsc -b && vite build` thành công xuất sắc.
+
+### [2026-09-05] Thêm chỉnh sửa số lượng quét ở Bảng 1 & Đổi logic trừ số lượng ở Bảng 2
+
+- **Khu vực**: Database RPC migration (`migrations/20260905060000_update_scanned_row_and_qty.sql`), Frontend Bảng 1 ([ReconciliationTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReconciliationTable.tsx)), Frontend Bảng 2 ([ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx)), Unit Tests ([ReconciliationTable.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReconciliationTable.test.tsx), [ReferenceDataTable.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReferenceDataTable.test.tsx)).
+- **Yêu cầu người dùng**:
+  1. Thêm vào thao tác chỉnh sửa ở Bảng 1 có thể chỉnh sửa được số lượng đã quét.
+  2. Ở phần chỉnh sửa số lượng ở Bảng số 2 logic thay đổi 1 chút (không áp dụng cho Bảng số 1): thay vì chỉnh sửa số lượng thực tế mới thì giữ lại ô số lượng cũ và thêm 1 ô số lượng điền mới bên cạnh để hệ thống tự động lấy số lượng cũ trừ đi số lượng mới điền và cho ra kết quả mới, nhưng cách hiển thị thì vẫn như cũ.
+- **Nguyên nhân & Giải pháp kiến trúc**:
+  1. **Bảng 1 (ReconciliationTable)**:
+     - Tạo migration `20260905060000_update_scanned_row_and_qty.sql` nâng cấp RPC `update_scanned_tag_id` nhận thêm tham số `p_new_qty numeric default null`. Tự động cập nhật `scanned_data.qty`, đối chiếu lại với file nguồn để phân định trạng thái `ok`, `qty_mismatch`, `bin_mismatch`, `not_in_reference`, `duplicate` và ghi `scan_audit_log` với action `'edit'` lưu vết đầy đủ.
+     - Modal chỉnh sửa Bảng 1 tích hợp đồng thời ô Tag ID và ô Số lượng quét mới (bắt buộc số không âm); hỗ trợ mở modal linh hoạt bằng cách bấm nút `✏️` hoặc click trực tiếp vào Tag ID / Số lượng quét.
+  2. **Bảng 2 (ReferenceDataTable)**:
+     - Thiết kế giao diện Modal chỉnh sửa số lượng nguồn gồm 2 ô song song: Ô số lượng cũ (hiển thị `editingRow.qty`) và Ô số lượng điền mới bên cạnh (`editQtyInput`).
+     - Hệ thống tự động tính toán real-time: `kết quả mới = số lượng cũ - số lượng điền mới`, hiển thị trực quan thẻ công thức tính.
+     - Ràng buộc an toàn: chặn không cho lưu và cảnh báo nếu số lượng điền mới vượt quá số lượng cũ (bảo đảm tồn kho không bị âm).
+     - Cách hiển thị ở Bảng 2 giữ nguyên 100%: hiển thị số lượng mới là số chính và note số lượng cũ bên dưới `(cũ: [previous_qty])`.
+- **Bằng chứng đã hết lỗi**:
+  - Bổ sung unit test trong `ReconciliationTable.test.tsx` kiểm thử thao tác sửa số lượng quét và gọi RPC `update_scanned_tag_id` với `p_new_qty`.
+  - Cập nhật và bổ sung unit test trong `ReferenceDataTable.test.tsx` kiểm thử tính năng tự động trừ số lượng và chặn trừ quá số lượng cũ.
+  - Toàn bộ 12 test files của Vitest với 57/57 tests PASS.
+  - `oxlint` 0 warnings 0 errors; `tsc -b && vite build` thành công.

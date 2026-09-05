@@ -178,15 +178,25 @@ export default function ReferenceDataTable({
 
   function openEditModal(row: ReferenceLine) {
     setEditingRow(row);
-    setEditQtyInput(String(row.qty));
+    setEditQtyInput('');
     setEditError(null);
   }
 
   async function handleSaveQty() {
     if (!editingRow) return;
-    const newQ = Number(editQtyInput);
-    if (isNaN(newQ) || newQ < 0) {
-      setEditError('Số lượng phải là một số không âm hợp lệ');
+    const cleanInput = editQtyInput.trim();
+    if (!cleanInput) {
+      setEditError('Vui lòng nhập số lượng điền mới');
+      return;
+    }
+    const deduct = Number(cleanInput);
+    if (isNaN(deduct) || deduct < 0) {
+      setEditError('Số lượng điền mới phải là một số không âm hợp lệ');
+      return;
+    }
+    const newQ = editingRow.qty - deduct;
+    if (newQ < 0) {
+      setEditError('Số lượng điền mới không được vượt quá số lượng cũ (tồn kho không được âm)');
       return;
     }
     setIsSavingQty(true);
@@ -714,30 +724,85 @@ export default function ReferenceDataTable({
                 </div>
               </div>
 
-              {/* Ô nhập số lượng mới */}
-              <div>
-                <label htmlFor="edit-new-qty-input" className="mb-1.5 block font-bold uppercase tracking-wider text-cyan-400 text-[11px]">
-                  Số lượng mới:
-                </label>
-                <input
-                  id="edit-new-qty-input"
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={editQtyInput}
-                  disabled={isSavingQty}
-                  onChange={(e) => setEditQtyInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleSaveQty();
-                  }}
-                  autoFocus
-                  className="w-full rounded-xl border-2 border-cyan-500/50 bg-black/70 p-3 text-center font-mono text-xl font-bold text-cyan-300 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
-                  placeholder="Nhập số lượng mới..."
-                />
+              {/* Hàng 2 ô: Ô số lượng cũ (giữ lại) và Ô số lượng điền mới bên cạnh */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Ô số lượng cũ */}
+                <div>
+                  <label className="mb-1.5 block font-bold uppercase tracking-wider text-slate-400 text-[11px]">
+                    Số lượng cũ:
+                  </label>
+                  <div
+                    data-testid="ref-old-qty-box"
+                    className="w-full rounded-xl border border-white/20 bg-black/60 p-3 text-center font-mono text-xl font-bold text-slate-200 select-none"
+                  >
+                    {editingRow.qty}
+                  </div>
+                </div>
+
+                {/* Ô số lượng điền mới bên cạnh */}
+                <div>
+                  <label htmlFor="edit-new-qty-input" className="mb-1.5 block font-bold uppercase tracking-wider text-cyan-400 text-[11px]">
+                    Số lượng điền mới:
+                  </label>
+                  <input
+                    id="edit-new-qty-input"
+                    aria-label="Số lượng điền mới"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={editQtyInput}
+                    disabled={isSavingQty}
+                    onChange={(e) => setEditQtyInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void handleSaveQty();
+                    }}
+                    autoFocus
+                    className="w-full rounded-xl border-2 border-cyan-500/50 bg-black/70 p-3 text-center font-mono text-xl font-bold text-cyan-300 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
+                    placeholder="Nhập SL..."
+                  />
+                </div>
               </div>
 
+              {/* Tự động tính toán: Lấy số lượng cũ trừ đi số lượng mới điền cho ra kết quả mới */}
+              {(() => {
+                const deductNum = editQtyInput.trim() === '' ? 0 : Number(editQtyInput);
+                const calcResult = editingRow.qty - deductNum;
+                const isNegative = !isNaN(deductNum) && calcResult < 0;
+                return (
+                  <div
+                    className={`rounded-2xl border p-3 font-mono text-xs transition-colors ${
+                      isNegative
+                        ? 'border-rose-500/50 bg-rose-950/40 text-rose-200'
+                        : 'border-emerald-500/40 bg-emerald-950/30 text-emerald-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Công thức trừ tự động:</span>
+                      <span className="font-bold">
+                        {editingRow.qty} - {deductNum} ={' '}
+                        <strong
+                          data-testid="ref-calculated-qty"
+                          className={isNegative ? 'text-rose-400 font-extrabold' : 'text-emerald-300 font-extrabold'}
+                        >
+                          {calcResult}
+                        </strong>
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">Kết quả tồn mới:</span>
+                      <span className="text-sm font-extrabold text-white">{calcResult}</span>
+                    </div>
+                    {isNegative && (
+                      <p className="mt-1.5 text-[10px] font-bold text-rose-400">
+                        ⚠️ Số lượng điền mới không được lớn hơn số lượng cũ (tồn kho không được âm).
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
               <p className="text-[11px] text-slate-400 italic">
-                * Sau khi lưu, số lượng hiện tại ({editingRow.qty}) sẽ được note lại là số lượng cũ gần nhất ngay tại cột Số lượng.
+                * Hệ thống tự động lấy số lượng cũ ({editingRow.qty}) trừ đi số lượng mới điền. Sau khi lưu, kết quả mới sẽ hiển thị tại cột Số lượng và số lượng cũ được ghi chú bên dưới (cũ: {editingRow.qty}).
               </p>
 
               {editError && (

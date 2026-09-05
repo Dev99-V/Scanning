@@ -138,6 +138,43 @@ describe('ReconciliationTable', () => {
         p_id: 'r-edit',
         p_new_batch_id: 'CORRECT_TAG',
         p_stock_code: null,
+        p_new_qty: 5,
+      });
+      expect(onRowUpdated).toHaveBeenCalled();
+    });
+  });
+
+  it('cho phép chỉnh sửa số lượng đã quét trong modal chỉnh sửa ở Bảng 1', async () => {
+    const onRowUpdated = vi.fn();
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-qty-edit', batch_id: 'TAG_001', qty: 2, bin: 'BIN_A' })]}
+        systemByBatch={new Map([['TAG_001', { stock_code: 'SKU_1', qty: 5, bin: 'BIN_A' }]])}
+        onRowUpdated={onRowUpdated}
+      />,
+    );
+
+    // Bấm vào ô số lượng quét để mở modal sửa
+    const qtyBtn = screen.getByTitle('Bấm để chỉnh sửa lượt quét');
+    fireEvent.click(qtyBtn);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Chỉnh Sửa Tag ID & Số Lượng Quét/i)).toBeInTheDocument();
+
+    // Sửa số lượng quét từ 2 thành 5
+    const qtyInput = screen.getByLabelText('Số lượng quét mới');
+    expect(qtyInput).toHaveValue(2);
+    fireEvent.change(qtyInput, { target: { value: '5' } });
+
+    // Bấm Lưu thay đổi
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('update_scanned_tag_id', {
+        p_id: 'r-qty-edit',
+        p_new_batch_id: 'TAG_001',
+        p_stock_code: 'SKU_1',
+        p_new_qty: 5,
       });
       expect(onRowUpdated).toHaveBeenCalled();
     });

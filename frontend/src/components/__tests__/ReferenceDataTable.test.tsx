@@ -112,11 +112,11 @@ describe('ReferenceDataTable', () => {
     expect(screen.queryByText('TAG002')).not.toBeInTheDocument();
   });
 
-  it('mở modal sửa số lượng và hiển thị note số lượng cũ cùng vị trí', async () => {
+  it('mở modal sửa số lượng: giữ lại ô số lượng cũ, nhập ô điền mới để tự động trừ cho ra kết quả mới', async () => {
     render(<ReferenceDataTable />);
     await screen.findByText('3400010001');
 
-    // Bấm nút sửa số lượng của TAG001
+    // Bấm nút sửa số lượng của TAG001 (số lượng cũ là 1000)
     const editBtn = screen.getByLabelText('Chỉnh sửa số lượng TAG001');
     fireEvent.click(editBtn);
 
@@ -124,23 +124,54 @@ describe('ReferenceDataTable', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Chỉnh Sửa Số Lượng Nguồn/i)).toBeInTheDocument();
 
-    // Nhập số lượng mới 300
-    const qtyInput = screen.getByLabelText('Số lượng mới:');
+    // Ô số lượng cũ hiển thị 1000
+    expect(screen.getByTestId('ref-old-qty-box')).toHaveTextContent('1000');
+
+    // Nhập số lượng điền mới 300 vào ô bên cạnh -> hệ thống tự động trừ: 1000 - 300 = 700
+    const qtyInput = screen.getByLabelText('Số lượng điền mới');
     fireEvent.change(qtyInput, { target: { value: '300' } });
+
+    // Kiểm tra tính toán tự động
+    expect(screen.getByTestId('ref-calculated-qty')).toHaveTextContent('700');
+
     fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
 
     await waitFor(() => {
       expect(rpc).toHaveBeenCalledWith('update_reference_qty', {
         p_batch_id: 'TAG001',
-        p_new_qty: 300,
+        p_new_qty: 700,
       });
     });
 
-    // Sau khi sửa, hiển thị số lượng 300 và note lại số lượng cũ (cũ: 1000)
+    // Sau khi sửa, hiển thị số lượng mới 700 và note lại số lượng cũ (cũ: 1000) như cũ
     await waitFor(() => {
-      expect(screen.getByText('300')).toBeInTheDocument();
+      expect(screen.getByText('700')).toBeInTheDocument();
       expect(screen.getByText('(cũ: 1000)')).toBeInTheDocument();
     });
+  });
+
+  it('chặn không cho lưu khi số lượng điền mới lớn hơn số lượng cũ ở Bảng 2', async () => {
+    render(<ReferenceDataTable />);
+    await screen.findByText('3400010001');
+
+    // Bấm nút sửa số lượng của TAG001 (cũ là 1000)
+    const editBtn = screen.getByLabelText('Chỉnh sửa số lượng TAG001');
+    fireEvent.click(editBtn);
+
+    // Nhập số lượng điền mới 1500 (> 1000)
+    const qtyInput = screen.getByLabelText('Số lượng điền mới');
+    fireEvent.change(qtyInput, { target: { value: '1500' } });
+
+    // Cảnh báo số lượng âm xuất hiện
+    expect(screen.getByText(/tồn kho không được âm/i)).toBeInTheDocument();
+
+    // Bấm Lưu
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    // Không gọi update_reference_qty
+    expect(rpc).not.toHaveBeenCalledWith('update_reference_qty', expect.anything());
+    // Hiện thông báo lỗi
+    expect(screen.getByRole('alert')).toHaveTextContent(/không được vượt quá số lượng cũ/i);
   });
 
   it('mở modal sửa vị trí (Bin) và hiển thị note vị trí cũ cùng vị trí', async () => {

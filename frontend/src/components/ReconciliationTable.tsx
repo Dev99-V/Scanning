@@ -40,9 +40,10 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
-  // State cho modal chỉnh sửa Tag ID
+  // State cho modal chỉnh sửa Tag ID & Số lượng quét
   const [editingRow, setEditingRow] = useState<ScanRow | null>(null);
   const [newTagId, setNewTagId] = useState('');
+  const [editQty, setEditQty] = useState('');
   const [manualStockCode, setManualStockCode] = useState('');
   const [isSavingTag, setIsSavingTag] = useState(false);
   const [editNotice, setEditNotice] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
   function openEditModal(r: ScanRow) {
     setEditingRow(r);
     setNewTagId(r.batch_id);
+    setEditQty(String(r.qty));
     const sys = systemByBatch.get(r.batch_id);
     setManualStockCode(r.stock_code ?? sys?.stock_code ?? '');
     setEditNotice(null);
@@ -63,6 +65,11 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
       setEditNotice('⚠️ Vui lòng nhập Tag ID hợp lệ (không được để trống).');
       return;
     }
+    const cleanQty = Number(editQty);
+    if (isNaN(cleanQty) || cleanQty < 0) {
+      setEditNotice('⚠️ Số lượng quét phải là một số không âm hợp lệ.');
+      return;
+    }
     setIsSavingTag(true);
     setEditNotice(null);
     try {
@@ -70,6 +77,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
         p_id: editingRow.id,
         p_new_batch_id: cleanTag,
         p_stock_code: manualStockCode.trim() || null,
+        p_new_qty: cleanQty,
       });
       if (error || !data?.ok) {
         setEditNotice(`❌ Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
@@ -253,17 +261,24 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                     </button>
                   </td>
 
-                  {/* Số lượng quét (màu đỏ cảnh báo nếu chênh lệch) */}
+                  {/* Số lượng quét (bấm để chỉnh sửa hoặc dùng nút ở cột Thao tác) */}
                   <td className="px-3 py-2.5 text-right">
-                    <span
-                      className={
-                        isQtyDiff
-                          ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
-                          : 'font-bold text-white'
-                      }
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(r)}
+                      title="Bấm để chỉnh sửa lượt quét"
+                      className="hover:underline transition text-right font-bold inline-block"
                     >
-                      {r.qty}
-                    </span>
+                      <span
+                        className={
+                          isQtyDiff
+                            ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                            : 'font-bold text-white'
+                        }
+                      >
+                        {r.qty}
+                      </span>
+                    </button>
                   </td>
 
                   {/* Số lượng hệ thống (màu đỏ cảnh báo nếu chênh lệch) */}
@@ -485,10 +500,10 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 <span className="text-2xl">✏️</span>
                 <div>
                   <h3 id="edit-tag-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
-                    Chỉnh Sửa Tag ID
+                    Chỉnh Sửa Tag ID &amp; Số Lượng Quét
                   </h3>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
-                    Sửa Tag ID do quét hoặc nhập nhầm
+                    Sửa Tag ID hoặc Số lượng quét do quét hoặc nhập nhầm
                   </p>
                 </div>
               </div>
@@ -515,7 +530,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                   <span className="font-bold text-emerald-300">{editingRow.bin}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Số lượng quét:</span>
+                  <span className="text-slate-400">Số lượng quét hiện tại:</span>
                   <span className="font-bold text-white">{editingRow.qty}</span>
                 </div>
                 <div className="flex justify-between">
@@ -524,20 +539,41 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 </div>
               </div>
 
-              {/* Ô nhập Tag ID mới */}
-              <div>
-                <label htmlFor="edit-new-tag-input" className="block text-[11px] font-bold uppercase tracking-wider text-cyan-400 mb-1">
-                  Tag ID Mới:
-                </label>
-                <input
-                  id="edit-new-tag-input"
-                  type="text"
-                  autoFocus
-                  value={newTagId}
-                  onChange={(e) => setNewTagId(e.target.value)}
-                  placeholder="Nhập Tag ID chính xác..."
-                  className="w-full rounded-xl border border-cyan-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold uppercase text-cyan-300 placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-                />
+              {/* Hàng nhập Tag ID và Số lượng quét mới */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Ô nhập Tag ID mới */}
+                <div>
+                  <label htmlFor="edit-new-tag-input" className="block text-[11px] font-bold uppercase tracking-wider text-cyan-400 mb-1">
+                    Tag ID:
+                  </label>
+                  <input
+                    id="edit-new-tag-input"
+                    type="text"
+                    autoFocus
+                    value={newTagId}
+                    onChange={(e) => setNewTagId(e.target.value)}
+                    placeholder="Nhập Tag ID chính xác..."
+                    className="w-full rounded-xl border border-cyan-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold uppercase text-cyan-300 placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                  />
+                </div>
+
+                {/* Ô nhập Số lượng quét mới */}
+                <div>
+                  <label htmlFor="edit-new-qty-input" className="block text-[11px] font-bold uppercase tracking-wider text-cyan-400 mb-1">
+                    Số lượng quét:
+                  </label>
+                  <input
+                    id="edit-new-qty-input"
+                    aria-label="Số lượng quét mới"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={editQty}
+                    onChange={(e) => setEditQty(e.target.value)}
+                    placeholder="Nhập số lượng..."
+                    className="w-full rounded-xl border border-cyan-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold text-cyan-300 placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                  />
+                </div>
               </div>
 
               {/* Tra cứu tức thì trong file nguồn */}
@@ -604,7 +640,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 </button>
                 <button
                   type="submit"
-                  disabled={isSavingTag || !newTagId.trim()}
+                  disabled={isSavingTag || !newTagId.trim() || editQty.trim() === ''}
                   className="rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-cyan-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
                 >
                   {isSavingTag ? 'Đang lưu...' : '💾 Lưu thay đổi'}
