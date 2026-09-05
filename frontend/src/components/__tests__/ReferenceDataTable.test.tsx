@@ -245,5 +245,118 @@ describe('ReferenceDataTable', () => {
     expect(screen.getByText('TAG001')).toBeInTheDocument();
     expect(screen.getByText('TAG002')).toBeInTheDocument();
   });
+
+  it('highlight dòng khi quét Tag ID khớp nhưng lệch vị trí (bin) với badge LỆCH BIN và ô Bin highlight vàng cam', async () => {
+    const mockScannedRows = [
+      {
+        id: 's1',
+        batch_id: 'TAG001',
+        qty: 1000,
+        bin: '999999', // khác bin nguồn (200202)
+        stock_code: '3400010001',
+        status: 'bin_mismatch' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:00:00Z',
+      },
+    ];
+
+    render(<ReferenceDataTable scannedRows={mockScannedRows} />);
+    await screen.findByText('3400010001');
+
+    // Dòng TAG001 lệch bin: có testid ref-row-mismatch-bin
+    const row = screen.getByTestId('ref-row-mismatch-bin');
+    expect(row).toBeInTheDocument();
+    expect(row).toHaveTextContent('TAG001');
+
+    // Badge LỆCH BIN xuất hiện ở cột Tag ID
+    const badge = screen.getByTestId('ref-badge-bin-mismatch');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('LỆCH BIN');
+
+    // Ô Bin được highlight dạng cảnh báo vàng cam
+    const binCell = screen.getByTestId('ref-cell-bin-mismatch');
+    expect(binCell).toBeInTheDocument();
+    expect(binCell).toHaveTextContent('200202');
+
+    // Không có badge LỆCH SL
+    expect(screen.queryByTestId('ref-badge-qty-mismatch')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ref-cell-qty-mismatch')).not.toBeInTheDocument();
+
+    // Header badge LỆCH BIN
+    expect(screen.getByTestId('ref-bin-mismatch-badge')).toHaveTextContent(/LỆCH BIN: 1 DÒNG/i);
+  });
+
+  it('highlight dòng khi quét Tag ID khớp nhưng lệch số lượng với badge LỆCH SL và ô Qty highlight đỏ', async () => {
+    const mockScannedRows = [
+      {
+        id: 's2',
+        batch_id: 'TAG002',
+        qty: 50, // khác qty nguồn (900)
+        bin: '100101', // khớp bin nguồn
+        stock_code: '3400010002',
+        status: 'qty_mismatch' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:00:00Z',
+      },
+    ];
+
+    render(<ReferenceDataTable scannedRows={mockScannedRows} />);
+    await screen.findByText('3400010002');
+
+    // Dòng TAG002 lệch SL: có testid ref-row-mismatch-qty
+    const row = screen.getByTestId('ref-row-mismatch-qty');
+    expect(row).toBeInTheDocument();
+    expect(row).toHaveTextContent('TAG002');
+
+    // Badge LỆCH SL xuất hiện ở cột Tag ID
+    const badge = screen.getByTestId('ref-badge-qty-mismatch');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('LỆCH SL');
+
+    // Ô Số lượng được highlight dạng cảnh báo đỏ
+    const qtyCell = screen.getByTestId('ref-cell-qty-mismatch');
+    expect(qtyCell).toBeInTheDocument();
+    expect(qtyCell).toHaveTextContent('900');
+
+    // Không có badge LỆCH BIN
+    expect(screen.queryByTestId('ref-badge-bin-mismatch')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ref-cell-bin-mismatch')).not.toBeInTheDocument();
+
+    // Header badge LỆCH SL
+    expect(screen.getByTestId('ref-qty-mismatch-badge')).toHaveTextContent(/LỆCH SL: 1 DÒNG/i);
+  });
+
+  it('highlight dòng khi quét Tag ID khớp nhưng lệch cả vị trí bin và số lượng', async () => {
+    const mockScannedRows = [
+      {
+        id: 's1',
+        batch_id: 'TAG001',
+        qty: 500, // khác qty nguồn (1000)
+        bin: '888888', // khác bin nguồn (200202)
+        stock_code: '3400010001',
+        status: 'bin_mismatch' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:00:00Z',
+      },
+    ];
+
+    render(<ReferenceDataTable scannedRows={mockScannedRows} />);
+    await screen.findByText('3400010001');
+
+    // Dòng TAG001 lệch cả 2: testid ref-row-mismatch-both
+    const row = screen.getByTestId('ref-row-mismatch-both');
+    expect(row).toBeInTheDocument();
+
+    // Cả 2 badge LỆCH BIN và LỆCH SL đều xuất hiện
+    expect(screen.getByTestId('ref-badge-bin-mismatch')).toHaveTextContent('LỆCH BIN');
+    expect(screen.getByTestId('ref-badge-qty-mismatch')).toHaveTextContent('LỆCH SL');
+
+    // Cả 2 ô Bin và Qty đều được highlight
+    expect(screen.getByTestId('ref-cell-bin-mismatch')).toHaveTextContent('200202');
+    expect(screen.getByTestId('ref-cell-qty-mismatch')).toHaveTextContent('1000');
+  });
 });
 

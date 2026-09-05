@@ -59,11 +59,41 @@ export default function ReferenceDataTable({
     (r: ReferenceLine): boolean => {
       const scans = scannedByBatch.get(r.batch_id);
       if (!scans || scans.length === 0) return false;
+      const cleanRefBin = (r.bin || '').trim().toLowerCase();
       return scans.some(
-        (s) => s.status === 'ok' || (s.bin === r.bin && Number(s.qty) === Number(r.qty)),
+        (s) =>
+          s.status === 'ok' ||
+          ((s.bin || '').trim().toLowerCase() === cleanRefBin && Number(s.qty) === Number(r.qty)),
       );
     },
     [scannedByBatch],
+  );
+
+  // Kiểm tra xem 1 dòng nguồn có lượt quét ở Bảng 1 nhưng chưa khớp vị trí (bin) hay không
+  const isRowBinMismatch = React.useCallback(
+    (r: ReferenceLine): boolean => {
+      if (isRowMatched(r)) return false;
+      const scans = scannedByBatch.get(r.batch_id);
+      if (!scans || scans.length === 0) return false;
+      const cleanRefBin = (r.bin || '').trim().toLowerCase();
+      return scans.some(
+        (s) => s.status === 'bin_mismatch' || (s.bin || '').trim().toLowerCase() !== cleanRefBin,
+      );
+    },
+    [scannedByBatch, isRowMatched],
+  );
+
+  // Kiểm tra xem 1 dòng nguồn có lượt quét ở Bảng 1 nhưng chưa khớp số lượng hay không
+  const isRowQtyMismatch = React.useCallback(
+    (r: ReferenceLine): boolean => {
+      if (isRowMatched(r)) return false;
+      const scans = scannedByBatch.get(r.batch_id);
+      if (!scans || scans.length === 0) return false;
+      return scans.some(
+        (s) => s.status === 'qty_mismatch' || Number(s.qty) !== Number(r.qty),
+      );
+    },
+    [scannedByBatch, isRowMatched],
   );
 
   // Đếm tổng số dòng nguồn đã khớp với Bảng 1
@@ -74,6 +104,24 @@ export default function ReferenceDataTable({
     }
     return count;
   }, [rows, isRowMatched]);
+
+  // Đếm số dòng chưa khớp vị trí (bin)
+  const binMismatchCount = useMemo(() => {
+    let count = 0;
+    for (const r of rows) {
+      if (isRowBinMismatch(r)) count++;
+    }
+    return count;
+  }, [rows, isRowBinMismatch]);
+
+  // Đếm số dòng chưa khớp số lượng
+  const qtyMismatchCount = useMemo(() => {
+    let count = 0;
+    for (const r of rows) {
+      if (isRowQtyMismatch(r)) count++;
+    }
+    return count;
+  }, [rows, isRowQtyMismatch]);
 
   // Trạng thái modal chỉnh sửa số lượng (không có nút xóa)
   const [editingRow, setEditingRow] = useState<ReferenceLine | null>(null);
@@ -242,8 +290,15 @@ export default function ReferenceDataTable({
     if (smartFilter.trim()) {
       const term = smartFilter.trim().toLowerCase();
       const isSearchingMatched = term === 'khớp' || term === 'đã khớp' || term === 'da khop';
+      const isSearchingBinMismatch = term === 'lệch bin' || term === 'lech bin' || term === 'lệch vị trí';
+      const isSearchingQtyMismatch = term === 'lệch sl' || term === 'lech sl' || term === 'lệch số lượng';
+      const isSearchingAnyMismatch = term === 'lệch' || term === 'lech' || term === 'sai lệch';
+
       list = list.filter((r) => {
         if (isSearchingMatched && isRowMatched(r)) return true;
+        if (isSearchingBinMismatch && isRowBinMismatch(r)) return true;
+        if (isSearchingQtyMismatch && isRowQtyMismatch(r)) return true;
+        if (isSearchingAnyMismatch && (isRowBinMismatch(r) || isRowQtyMismatch(r))) return true;
         return (
           r.stock_code.toLowerCase().includes(term) ||
           r.batch_id.toLowerCase().includes(term)
@@ -252,7 +307,7 @@ export default function ReferenceDataTable({
     }
 
     return list;
-  }, [rows, smartFilter, warehouse, bin, matchedOnlyFilter, isRowMatched]);
+  }, [rows, smartFilter, warehouse, bin, matchedOnlyFilter, isRowMatched, isRowBinMismatch, isRowQtyMismatch]);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const target = e.currentTarget;
@@ -305,9 +360,27 @@ export default function ReferenceDataTable({
                     ĐÃ KHỚP BẢNG 1: {matchedCount.toLocaleString()} DÒNG
                   </span>
                 )}
+                {binMismatchCount > 0 && (
+                  <span
+                    data-testid="ref-bin-mismatch-badge"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold text-amber-300 shadow-sm"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    LỆCH BIN: {binMismatchCount.toLocaleString()} DÒNG
+                  </span>
+                )}
+                {qtyMismatchCount > 0 && (
+                  <span
+                    data-testid="ref-qty-mismatch-badge"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/20 px-2.5 py-0.5 text-[10px] font-bold text-rose-300 shadow-sm"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                    LỆCH SL: {qtyMismatchCount.toLocaleString()} DÒNG
+                  </span>
+                )}
               </h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Hiển thị đầy đủ thông tin tồn kho gốc: Stock Code, Tag ID (Batch), Kho, Bin, Số lượng và Ngày tạo. Các dòng khớp với Bảng 1 được highlight xanh ngọc nổi bật.
+                Hiển thị đầy đủ thông tin tồn kho gốc: Stock Code, Tag ID (Batch), Kho, Bin, Số lượng và Ngày tạo. Các dòng khớp Bảng 1 được highlight xanh ngọc; các dòng lệch vị trí (Bin) được highlight vàng cam, lệch số lượng được highlight đỏ.
               </p>
             </div>
           </div>
@@ -401,20 +474,52 @@ export default function ReferenceDataTable({
                 <tbody className="divide-y divide-white/5">
                   {displayedRows.map((r, i) => {
                     const isMatched = isRowMatched(r);
+                    const isBinMismatch = !isMatched && isRowBinMismatch(r);
+                    const isQtyMismatch = !isMatched && isRowQtyMismatch(r);
+
+                    let rowTestId = 'ref-row';
+                    if (isMatched) {
+                      rowTestId = 'ref-row-matched';
+                    } else if (isBinMismatch && isQtyMismatch) {
+                      rowTestId = 'ref-row-mismatch-both';
+                    } else if (isBinMismatch) {
+                      rowTestId = 'ref-row-mismatch-bin';
+                    } else if (isQtyMismatch) {
+                      rowTestId = 'ref-row-mismatch-qty';
+                    }
+
+                    const rowBgClass = isMatched
+                      ? 'bg-emerald-950/40 hover:bg-emerald-900/50 border-l-4 border-l-emerald-400 text-emerald-100 shadow-[inset_0_0_12px_rgba(16,185,129,0.12)]'
+                      : isBinMismatch && isQtyMismatch
+                      ? 'bg-gradient-to-r from-rose-950/35 via-slate-900/50 to-amber-950/35 hover:bg-rose-900/30 border-l-4 border-l-rose-500 text-slate-100 shadow-[inset_0_0_12px_rgba(244,63,94,0.12)]'
+                      : isQtyMismatch
+                      ? 'bg-rose-950/35 hover:bg-rose-900/40 border-l-4 border-l-rose-500 text-rose-100 shadow-[inset_0_0_12px_rgba(244,63,94,0.12)]'
+                      : isBinMismatch
+                      ? 'bg-amber-950/35 hover:bg-amber-900/40 border-l-4 border-l-amber-500 text-amber-100 shadow-[inset_0_0_12px_rgba(245,158,11,0.12)]'
+                      : 'hover:bg-white/5';
+
                     return (
                       <tr
                         key={`${r.batch_id}-${i}`}
-                        data-testid={isMatched ? 'ref-row-matched' : 'ref-row'}
-                        className={`transition-colors ${
-                          isMatched
-                            ? 'bg-emerald-950/40 hover:bg-emerald-900/50 border-l-4 border-l-emerald-400 text-emerald-100 shadow-[inset_0_0_12px_rgba(16,185,129,0.12)]'
-                            : 'hover:bg-white/5'
-                        }`}
+                        data-testid={rowTestId}
+                        className={`transition-colors ${rowBgClass}`}
                       >
                         <td className="px-3 py-2 font-bold text-slate-200">{r.stock_code}</td>
                         <td className="px-3 py-2 font-bold">
-                          <div className="flex items-center gap-1.5">
-                            <span className={isMatched ? 'text-emerald-300 font-extrabold' : 'text-cyan-300'}>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={
+                                isMatched
+                                  ? 'text-emerald-300 font-extrabold'
+                                  : isQtyMismatch && !isBinMismatch
+                                  ? 'text-rose-300 font-extrabold'
+                                  : isBinMismatch && !isQtyMismatch
+                                  ? 'text-amber-300 font-extrabold'
+                                  : isBinMismatch && isQtyMismatch
+                                  ? 'text-rose-300 font-extrabold'
+                                  : 'text-cyan-300'
+                              }
+                            >
                               {r.batch_id}
                             </span>
                             {isMatched && (
@@ -426,6 +531,26 @@ export default function ReferenceDataTable({
                                 <span>ĐÃ KHỚP</span>
                               </span>
                             )}
+                            {isBinMismatch && (
+                              <span
+                                data-testid="ref-badge-bin-mismatch"
+                                title="Đã quét Tag ID nhưng chưa khớp vị trí Bin với Bảng 1"
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/25 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-amber-300 shadow-sm"
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                                <span>LỆCH BIN</span>
+                              </span>
+                            )}
+                            {isQtyMismatch && (
+                              <span
+                                data-testid="ref-badge-qty-mismatch"
+                                title="Đã quét Tag ID nhưng chưa khớp số lượng với Bảng 1"
+                                className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 bg-rose-500/25 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-rose-300 shadow-sm"
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                                <span>LỆCH SL</span>
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-3 py-2 text-slate-300">{r.warehouse}</td>
@@ -433,7 +558,17 @@ export default function ReferenceDataTable({
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="text-right">
-                              <span className="font-semibold text-emerald-300">{r.bin}</span>
+                              {isBinMismatch ? (
+                                <span
+                                  data-testid="ref-cell-bin-mismatch"
+                                  title="Vị trí chưa khớp với lượt quét ở Bảng 1"
+                                  className="inline-block rounded border border-amber-500/60 bg-amber-950/70 px-2 py-0.5 font-bold text-amber-300 shadow-sm"
+                                >
+                                  {r.bin}
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-emerald-300">{r.bin}</span>
+                              )}
                               {r.previous_bin && (
                                 <span className="block text-[10px] font-medium text-amber-400/90">
                                   (cũ: {r.previous_bin})
@@ -456,7 +591,23 @@ export default function ReferenceDataTable({
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="text-right">
-                              <span className={`font-bold text-xs ${isMatched ? 'text-emerald-200 font-extrabold' : 'text-white'}`}>{r.qty}</span>
+                              {isQtyMismatch ? (
+                                <span
+                                  data-testid="ref-cell-qty-mismatch"
+                                  title="Số lượng chưa khớp với lượt quét ở Bảng 1"
+                                  className="inline-block rounded border border-rose-500/60 bg-rose-950/70 px-2 py-0.5 font-bold text-rose-300 shadow-sm text-xs"
+                                >
+                                  {r.qty}
+                                </span>
+                              ) : (
+                                <span
+                                  className={`font-bold text-xs ${
+                                    isMatched ? 'text-emerald-200 font-extrabold' : 'text-white'
+                                  }`}
+                                >
+                                  {r.qty}
+                                </span>
+                              )}
                               {r.previous_qty !== null && r.previous_qty !== undefined && (
                                 <span className="block text-[10px] font-medium text-amber-400/90">
                                   (cũ: {r.previous_qty})

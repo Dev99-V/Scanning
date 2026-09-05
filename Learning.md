@@ -302,5 +302,31 @@
   - `oxlint` 0 warnings 0 errors; `tsc -b && vite build` thành công trong 2.17s.
   - Các script kiểm định chất lượng: `qc_phase5.sh`, `qc_phase6.sh`, `qc_phase8.sh` đều PASS (Exit 0).
 
+### [2026-09-05] Thêm highlight phân tách riêng cho lệch vị trí (Bin) và lệch số lượng ở Bảng 2
 
-
+- **Khu vực**: Frontend Bảng 2 ([ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx)), Unit Tests ([ReferenceDataTable.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReferenceDataTable.test.tsx)).
+- **Yêu cầu người dùng**: Ở bảng số 2 thêm 1 dạng highlight khi ở bảng 1 đã quét tagid và khớp với bảng số 2 nhưng chưa khớp số lượng hoặc vị trí (bin) cũng sẽ được highlight lại chia ra 2 loại highlight khác nhau cho bin và số lượng, lưu ý không được sửa hoặc xóa những gì không liên quan đến yêu cầu trên, sau khi xong push code lên main để tự động deploy lại.
+- **Nguyên nhân & Giải pháp kiến trúc**:
+  1. Giữ nguyên 100% các thành phần và chức năng hiện hữu, không sửa hoặc xóa những gì không liên quan.
+  2. Bổ sung 2 hàm kiểm tra trạng thái lệch độc lập:
+     - `isRowBinMismatch(r)`: kiểm tra dòng nguồn có Tag ID đã được quét ở Bảng 1 nhưng vị trí Bin thực tế khác với vị trí nguồn (`bin_mismatch` hoặc `s.bin !== r.bin`).
+     - `isRowQtyMismatch(r)`: kiểm tra dòng nguồn có Tag ID đã được quét ở Bảng 1 nhưng số lượng thực tế khác với số lượng nguồn (`qty_mismatch` hoặc `Number(s.qty) !== Number(r.qty)`).
+  3. Phân tách 2 dạng highlight trực quan rõ rệt:
+     - **Lệch vị trí (Bin)**:
+       + Phủ nền và viền trái màu vàng cam cảnh báo: `bg-amber-950/35 border-l-4 border-l-amber-500 text-amber-100 shadow-[inset_0_0_12px_rgba(245,158,11,0.12)]`.
+       + Badge `LỆCH BIN` vàng cam hiển thị cạnh Tag ID.
+       + Ô Vị trí (Bin) được đóng khung nổi bật: `border-amber-500/60 bg-amber-950/70 text-amber-300 font-bold`.
+     - **Lệch số lượng**:
+       + Phủ nền và viền trái màu đỏ hồng: `bg-rose-950/35 border-l-4 border-l-rose-500 text-rose-100 shadow-[inset_0_0_12px_rgba(244,63,94,0.12)]`.
+       + Badge `LỆCH SL` đỏ hiển thị cạnh Tag ID.
+       + Ô Số lượng được đóng khung nổi bật: `border-rose-500/60 bg-rose-950/70 text-rose-300 font-bold`.
+     - **Lệch cả hai (vừa lệch Bin vừa lệch SL)**:
+       + Phủ nền gradient kết hợp `from-rose-950/35 to-amber-950/35`.
+       + Cả 2 badge `LỆCH BIN` và `LỆCH SL` đều xuất hiện cạnh Tag ID.
+       + Cả ô Bin và ô Số lượng đều được highlight theo style riêng biệt của từng loại.
+  4. Header Bảng 2 hiển thị các huy hiệu thống kê chi tiết khi có dữ liệu lệch: `LỆCH BIN: X DÒNG` và `LỆCH SL: Y DÒNG` cạnh `ĐÃ KHỚP BẢNG 1: Z DÒNG`.
+  5. Bộ lọc thông minh mở rộng hỗ trợ nhận diện các từ khóa `"lệch bin"`, `"lệch sl"`, `"lệch"` để lọc nhanh.
+- **Bằng chứng đã hết lỗi**:
+  - Viết 3 unit test mới trong `ReferenceDataTable.test.tsx`: kiểm tra highlight dòng & badge & ô Bin cho lệch vị trí; highlight dòng & badge & ô Qty cho lệch số lượng; kiểm tra hiển thị đồng thời khi lệch cả hai.
+  - Toàn bộ 12 test files của Vitest với 55/55 tests PASS.
+  - `oxlint` 0 warnings 0 errors; `tsc -b && vite build` thành công xuất sắc.
