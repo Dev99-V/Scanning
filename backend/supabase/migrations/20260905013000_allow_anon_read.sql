@@ -4,11 +4,14 @@
 -- Các quyền ghi (INSERT/UPDATE/DELETE) trực tiếp bởi anon vẫn bị CHẶN bởi RLS
 -- (mọi thao tác ghi chỉ được thực thi thông qua RPC / Edge Functions có service_role).
 
+drop policy if exists reference_stock_select_to_anon on public.reference_stock;
 create policy reference_stock_select_to_anon
   on public.reference_stock for select to anon using (true);
 
+drop policy if exists scanned_data_select_to_anon on public.scanned_data;
 create policy scanned_data_select_to_anon
   on public.scanned_data for select to anon using (true);
 
+drop policy if exists scan_audit_log_select_to_anon on public.scan_audit_log;
 create policy scan_audit_log_select_to_anon
   on public.scan_audit_log for select to anon using (true);
