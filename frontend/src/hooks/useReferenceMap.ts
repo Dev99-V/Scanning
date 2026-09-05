@@ -49,9 +49,21 @@ export function useReferenceMap() {
     });
   }, []);
 
+  const updateBatchBin = useCallback((batchId: string, newBin: string) => {
+    setByBatch((prev) => {
+      const next = new Map(prev);
+      const cur = next.get(batchId);
+      if (cur) {
+        next.set(batchId, { ...cur, bin: newBin });
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
 
-  return { byBatch, loading, refetch: load, updateBatchQty };
+  return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin };
 }
+

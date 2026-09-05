@@ -29,15 +29,60 @@ interface ReconciliationTableProps {
   rows: ScanRow[];
   systemByBatch: Map<string, SystemNumbers>;
   onRowDeleted?: (id: string) => void;
+  onRowUpdated?: () => void;
 }
 
-export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted }: ReconciliationTableProps) {
+export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [deletingRow, setDeletingRow] = useState<ScanRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+
+  // State cho modal chỉnh sửa Tag ID
+  const [editingRow, setEditingRow] = useState<ScanRow | null>(null);
+  const [newTagId, setNewTagId] = useState('');
+  const [manualStockCode, setManualStockCode] = useState('');
+  const [isSavingTag, setIsSavingTag] = useState(false);
+  const [editNotice, setEditNotice] = useState<string | null>(null);
+
+  function openEditModal(r: ScanRow) {
+    setEditingRow(r);
+    setNewTagId(r.batch_id);
+    const sys = systemByBatch.get(r.batch_id);
+    setManualStockCode(r.stock_code ?? sys?.stock_code ?? '');
+    setEditNotice(null);
+  }
+
+  async function handleConfirmEdit(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!editingRow) return;
+    const cleanTag = newTagId.trim();
+    if (!cleanTag) {
+      setEditNotice('⚠️ Vui lòng nhập Tag ID hợp lệ (không được để trống).');
+      return;
+    }
+    setIsSavingTag(true);
+    setEditNotice(null);
+    try {
+      const { data, error } = await supabase.rpc('update_scanned_tag_id', {
+        p_id: editingRow.id,
+        p_new_batch_id: cleanTag,
+        p_stock_code: manualStockCode.trim() || null,
+      });
+      if (error || !data?.ok) {
+        setEditNotice(`❌ Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
+      } else {
+        onRowUpdated?.();
+        setEditingRow(null);
+      }
+    } catch (err) {
+      setEditNotice(`❌ Lỗi kết nối: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsSavingTag(false);
+    }
+  }
 
   async function handleConfirmDelete() {
     if (!deletingRow) return;
@@ -196,8 +241,17 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted 
                   {/* Stock Code */}
                   <td className="px-3 py-2.5 font-bold text-slate-200">{stockCode}</td>
 
-                  {/* Tag ID */}
-                  <td className="px-3 py-2.5 font-bold text-cyan-300">{r.batch_id}</td>
+                  {/* Tag ID (bấm để sửa hoặc dùng nút ở cột Thao tác) */}
+                  <td className="px-3 py-2.5 font-bold text-cyan-300">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(r)}
+                      title="Bấm để chỉnh sửa Tag ID"
+                      className="hover:underline hover:text-cyan-200 transition text-left font-bold"
+                    >
+                      {r.batch_id}
+                    </button>
+                  </td>
 
                   {/* Số lượng quét (màu đỏ cảnh báo nếu chênh lệch) */}
                   <td className="px-3 py-2.5 text-right">
@@ -274,20 +328,31 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted 
                     )}
                   </td>
 
-                  {/* Thao tác xóa khi nhập nhầm */}
+                  {/* Thao tác sửa Tag ID / xóa khi nhập nhầm */}
                   <td className="px-3 py-2.5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeleteNotice(null);
-                        setDeletingRow(r);
-                      }}
-                      title="Xóa lượt quét nhầm"
-                      aria-label={`Xóa lượt quét ${r.batch_id}`}
-                      className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-950/60 hover:text-rose-300 active:scale-95"
-                    >
-                      🗑️
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(r)}
+                        title="Chỉnh sửa Tag ID"
+                        aria-label={`Chỉnh sửa Tag ID ${r.batch_id}`}
+                        className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteNotice(null);
+                          setDeletingRow(r);
+                        }}
+                        title="Xóa lượt quét nhầm"
+                        aria-label={`Xóa lượt quét ${r.batch_id}`}
+                        className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-950/60 hover:text-rose-300 active:scale-95"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -401,6 +466,151 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted 
                 {isDeleting ? 'Đang xóa...' : '🗑️ Xác nhận xóa'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal UI nổi chỉnh sửa Tag ID */}
+      {editingRow && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-tag-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+        >
+          <div className="glass-panel relative flex w-full max-w-md flex-col rounded-3xl border border-cyan-500/50 bg-slate-950 p-6 shadow-2xl">
+            {/* Tiêu đề modal */}
+            <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✏️</span>
+                <div>
+                  <h3 id="edit-tag-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
+                    Chỉnh Sửa Tag ID
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
+                    Sửa Tag ID do quét hoặc nhập nhầm
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingTag}
+                onClick={() => setEditingRow(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form chỉnh sửa */}
+            <form onSubmit={handleConfirmEdit} className="my-4 space-y-4 text-xs">
+              {/* Thông tin lượt quét hiện tại */}
+              <div className="space-y-1.5 rounded-2xl border border-white/10 bg-black/60 p-3.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tag ID hiện tại:</span>
+                  <span className="font-bold text-slate-200">{editingRow.batch_id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Vị trí Bin quét:</span>
+                  <span className="font-bold text-emerald-300">{editingRow.bin}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số lượng quét:</span>
+                  <span className="font-bold text-white">{editingRow.qty}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Trạng thái hiện tại:</span>
+                  <span className="font-bold text-amber-300">{STATUS_LABEL[editingRow.status]}</span>
+                </div>
+              </div>
+
+              {/* Ô nhập Tag ID mới */}
+              <div>
+                <label htmlFor="edit-new-tag-input" className="block text-[11px] font-bold uppercase tracking-wider text-cyan-400 mb-1">
+                  Tag ID Mới:
+                </label>
+                <input
+                  id="edit-new-tag-input"
+                  type="text"
+                  autoFocus
+                  value={newTagId}
+                  onChange={(e) => setNewTagId(e.target.value)}
+                  placeholder="Nhập Tag ID chính xác..."
+                  className="w-full rounded-xl border border-cyan-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold uppercase text-cyan-300 placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                />
+              </div>
+
+              {/* Tra cứu tức thì trong file nguồn */}
+              {newTagId.trim() && (
+                (() => {
+                  const matchedSys = systemByBatch.get(newTagId.trim());
+                  if (matchedSys) {
+                    return (
+                      <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/40 p-2.5 text-[11px] text-emerald-300">
+                        <p className="font-bold flex items-center gap-1.5">
+                          <span>✓</span> Khớp dữ liệu nguồn hệ thống
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-x-3 text-[10px] text-slate-300">
+                          <span>Mã hàng: <strong className="text-white">{matchedSys.stock_code}</strong></span>
+                          <span>Vị trí: <strong className="text-white">{matchedSys.bin || '—'}</strong></span>
+                          <span>SL nguồn: <strong className="text-white">{matchedSys.qty}</strong></span>
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="space-y-2">
+                        <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 p-2.5 text-[11px] text-amber-300">
+                          <p className="font-bold flex items-center gap-1.5">
+                            <span>⚠️</span> Tag ID không có trong file nguồn
+                          </p>
+                          <p className="mt-0.5 text-[10px] text-slate-400">
+                            Trạng thái sau khi cập nhật sẽ là &quot;Ngoài hệ thống&quot;. Bạn có thể điền mã hàng (Stock Code) bên dưới nếu cần.
+                          </p>
+                        </div>
+                        <div>
+                          <label htmlFor="edit-stock-code-input" className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                            Mã hàng (Stock Code) tùy chọn:
+                          </label>
+                          <input
+                            id="edit-stock-code-input"
+                            type="text"
+                            value={manualStockCode}
+                            onChange={(e) => setManualStockCode(e.target.value)}
+                            placeholder="Nhập mã hàng nếu có..."
+                            className="w-full rounded-xl border border-white/10 bg-black/50 p-2 font-mono text-xs text-slate-200 placeholder:text-slate-600 focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                })()
+              )}
+
+              {editNotice && (
+                <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                  {editNotice}
+                </p>
+              )}
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button
+                  type="button"
+                  disabled={isSavingTag}
+                  onClick={() => setEditingRow(null)}
+                  className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTag || !newTagId.trim()}
+                  className="rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-cyan-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+                >
+                  {isSavingTag ? 'Đang lưu...' : '💾 Lưu thay đổi'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -194,5 +194,52 @@
      - Nút ✏️ mở Modal UI nổi cho phép gõ số lượng mới, gọi RPC `update_reference_qty`. Cập nhật đồng bộ cả state Bảng 2 và `useReferenceMap` để Bảng 1 tính toán lại đối chiếu tức thì. Không có nút xóa.
 - **Bằng chứng đã hết lỗi**: Cả 8/8 QC gates đều PASS. Vitest 11 files 39/39 tests PASS, lint clean, build clean.
 
+### [2026-09-05] Thêm tính năng chỉnh sửa Tag ID ở Bảng 1 không thay đổi cấu trúc hệ thống
+
+- **Khu vực**: Database RPC migration (`migrations/20260905034500_update_scanned_tag_id.sql`), Frontend Bảng 1 ([ReconciliationTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReconciliationTable.tsx)), [App.tsx](file:///workspaces/Scaning/frontend/src/App.tsx), Unit Tests ([ReconciliationTable.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReconciliationTable.test.tsx)).
+- **Yêu cầu người dùng**: Thêm tính năng có thể chỉnh sửa Tag ID ở Bảng 1 (Reconciliation / Scanned Table) khi nhập hoặc quét nhầm mà không làm thay đổi các cấu trúc khác trong hệ thống.
+- **Nguyên nhân & Giải pháp kiến trúc**:
+  1. Giữ nguyên 100% cấu trúc các bảng (`scanned_data`, `reference_stock`, `scan_audit_log`), không thay đổi kiểu cột, không thay đổi các Edge Functions contract (`scan-submit`, `resolve-duplicate`, `import-reference`) và không ảnh hưởng các RPC hiện có.
+  2. Tạo migration `20260905034500_update_scanned_tag_id.sql` với RPC `update_scanned_tag_id(p_id uuid, p_new_batch_id text, p_stock_code text default null)` chạy `security definer`:
+     - Khóa dòng quét bằng `SELECT ... FOR UPDATE`.
+     - Tra cứu `p_new_batch_id` trong `reference_stock`: nếu tìm thấy thì tự động đồng bộ `stock_code = v_ref.stock_code` và tính lại trạng thái đối chiếu (`ok`, `bin_mismatch`, `qty_mismatch`); nếu không có trong nguồn thì chuyển thành `not_in_reference` và nhận `p_stock_code` thủ công.
+     - Kiểm tra trùng lặp với các lượt quét khác trong `scanned_data`: nếu trùng thì đánh dấu trạng thái `duplicate` kèm `resolution = 'appended'`.
+     - Ghi nhận vào `scan_audit_log` với hành động `edit` (đã được định nghĩa sẵn từ schema khởi tạo) lưu cả giá trị cũ và mới.
+     - Cấp quyền thực thi (`GRANT EXECUTE`) cho các role `anon, authenticated, service_role`.
+  3. Frontend Bảng 1:
+     - Cho phép click trực tiếp vào ô Tag ID hoặc bấm nút `✏️` ở cột Thao tác để mở Modal UI nổi `Chỉnh Sửa Tag ID` chuẩn phong cách Cyberpunk dark.
+     - Hiển thị đầy đủ thông tin dòng quét hiện tại (Tag ID, Vị trí Bin, Số lượng, Trạng thái).
+     - Hỗ trợ tra cứu tức thì theo dữ liệu nguồn (`systemByBatch`): nếu tìm thấy thì hiện badge xanh báo khớp kèm chi tiết mã hàng, vị trí, số lượng nguồn; nếu không có thì hiện cảnh báo ngoài hệ thống kèm ô điền mã hàng tùy chọn.
+     - Gọi RPC `update_scanned_tag_id`, tự động kích hoạt callback `onRowUpdated` đồng bộ lại Bảng 1 ngay lập tức, đồng thời Supabase Realtime `UPDATE` event tự cập nhật in-place không cần reload trang.
+- **Bằng chứng đã hết lỗi**:
+  - Migration áp dụng thành công trên Postgres local; kiểm thử transaction trực tiếp cho cả 3 trường hợp: Khớp nguồn (chuyển sang `ok`), Trùng Tag ID (chuyển sang `duplicate`), Ngoài nguồn (nhận mã hàng tùy chọn và chuyển sang `not_in_reference`). Cả 3 trường hợp đều ghi log `edit` trong `scan_audit_log`.
+  - Toàn bộ 8/8 QC gates đều PASS (Exit 0): `qc_phase1.sh`, `qc_phase2.sh`, `qc_phase3.sh`, `qc_phase4.sh`, `qc_phase5.sh`, `qc_phase6.sh`, `qc_phase7.sh`, `qc_phase8.sh`.
+  - Vitest 11 test files với 41/41 tests PASS (bổ sung 2 tests mới cho luồng sửa Tag ID).
+  - TypeScript strict check và Vite build thành công sạch sẽ.
+
+### [2026-09-05] Thêm tính năng chỉnh sửa vị trí (Bin) ở Bảng 2 và tự động đồng bộ trạng thái đối chiếu
+
+- **Khu vực**: Database schema (`migrations/20260905040000_update_reference_bin.sql`), RPCs (`update_reference_bin`, `update_reference_qty`), Frontend Bảng 2 ([ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx)), [useReferenceMap.ts](file:///workspaces/Scaning/frontend/src/hooks/useReferenceMap.ts), [App.tsx](file:///workspaces/Scaning/frontend/src/App.tsx), Unit Tests ([ReferenceDataTable.test.tsx](file:///workspaces/Scaning/frontend/src/components/__tests__/ReferenceDataTable.test.tsx)).
+- **Yêu cầu người dùng**: Thêm tính năng chỉnh sửa vị trí (Bin) ở Bảng số 2 (Reference Data Table) đồng bộ với Supabase, lưu vết vị trí cũ ngay tại ô Bin `(cũ: [previous_bin])`, không xóa dữ liệu cũ.
+- **Nguyên nhân & Giải pháp kiến trúc**:
+  1. Tương tự như cơ chế chỉnh sửa số lượng (`previous_qty`), thêm cột `previous_bin text default null` vào bảng `reference_stock` để lưu vết vị trí trước đó bền vững trên cơ sở dữ liệu.
+  2. Tạo RPC `update_reference_bin(p_batch_id text, p_new_bin text)` (`SECURITY DEFINER`):
+     - Kiểm tra tham số hợp lệ (`p_batch_id`, `p_new_bin` không rỗng sau khi trim).
+     - Cập nhật `previous_bin = v_old_bin, bin = v_clean_bin` cho dòng tương ứng trong `reference_stock`.
+     - Tự động đánh giá và tính toán lại `status` (`bin_mismatch`, `qty_mismatch`, `ok`) cho tất cả các dòng đã quét trong `scanned_data` có `batch_id` tương ứng, giúp Bảng 1 cập nhật trạng thái đối chiếu ngay lập tức.
+     - Cập nhật cả RPC `update_reference_qty` để cũng tự động tính toán lại `status` cho `scanned_data`.
+     - Cấp quyền execute cho `anon, authenticated, service_role`.
+  3. Frontend:
+     - Hook `useReferenceMap.ts`: Bổ sung hàm `updateBatchBin(batchId, newBin)` để cập nhật bản đồ tra cứu tức thì trong bộ nhớ.
+     - Component `ReferenceDataTable.tsx`: Cột Bin hiển thị vị trí hiện tại và ghi chú `(cũ: [previous_bin])` nếu có; nút `✏️` mở Modal UI nổi `Chỉnh Sửa Vị Trí Nguồn (Bin)` phong cách Cyberpunk dark.
+     - Component `App.tsx`: Nối callback `onBinUpdated` để đồng thời cập nhật `useReferenceMap` và kích hoạt refetch Bảng 1.
+- **Bằng chứng đã hết lỗi**:
+  - Migration áp dụng thành công trên Postgres local; kiểm thử transaction update bin trực tiếp và kiểm tra việc tự động chuyển `status` từ `bin_mismatch` sang `ok`.
+  - Cả 8/8 QC gates đều PASS (Exit 0): `qc_phase1.sh`, `qc_phase2.sh`, `qc_phase3.sh`, `qc_phase4.sh`, `qc_phase5.sh`, `qc_phase6.sh`, `qc_phase7.sh`, `qc_phase8.sh`.
+  - Vitest 11 test files với 42/42 tests PASS (bao gồm test mở modal và kiểm tra ghi chú vị trí cũ).
+  - TypeScript strict (`tsc -b`) và Vite build thành công không lỗi; Biome lint 0 lỗi 0 cảnh báo.
+
+
+
 
 

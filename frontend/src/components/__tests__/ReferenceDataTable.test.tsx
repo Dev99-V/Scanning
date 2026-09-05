@@ -40,10 +40,10 @@ beforeEach(() => {
 });
 
 describe('ReferenceDataTable', () => {
-  it('select đầy đủ cột nguồn bao gồm batch_id và previous_qty, render các dòng', async () => {
+  it('select đầy đủ cột nguồn bao gồm batch_id, previous_bin và previous_qty, render các dòng', async () => {
     render(<ReferenceDataTable />);
     await waitFor(() =>
-      expect(select).toHaveBeenCalledWith('batch_id,stock_code,warehouse,bin,qty,previous_qty,create_date')
+      expect(select).toHaveBeenCalledWith('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date')
     );
     expect(await screen.findByText('3400010001')).toBeInTheDocument();
     expect(screen.getByText('TAG001')).toBeInTheDocument();
@@ -95,6 +95,39 @@ describe('ReferenceDataTable', () => {
     await waitFor(() => {
       expect(screen.getByText('300')).toBeInTheDocument();
       expect(screen.getByText('(cũ: 1000)')).toBeInTheDocument();
+    });
+  });
+
+  it('mở modal sửa vị trí (Bin) và hiển thị note vị trí cũ cùng vị trí', async () => {
+    const onBinUpdated = vi.fn();
+    render(<ReferenceDataTable onBinUpdated={onBinUpdated} />);
+    await screen.findByText('3400010001');
+
+    // Bấm nút sửa vị trí của TAG001
+    const editBinBtn = screen.getByLabelText('Chỉnh sửa vị trí TAG001');
+    fireEvent.click(editBinBtn);
+
+    // Modal xuất hiện
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Chỉnh Sửa Vị Trí Nguồn \(Bin\)/i)).toBeInTheDocument();
+
+    // Nhập vị trí mới C9-NEW
+    const binInput = screen.getByLabelText('Vị trí Bin mới:');
+    fireEvent.change(binInput, { target: { value: 'C9-NEW' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('update_reference_bin', {
+        p_batch_id: 'TAG001',
+        p_new_bin: 'C9-NEW',
+      });
+      expect(onBinUpdated).toHaveBeenCalledWith('TAG001', 'C9-NEW');
+    });
+
+    // Sau khi sửa, hiển thị vị trí mới C9-NEW và note lại vị trí cũ (cũ: C4)
+    await waitFor(() => {
+      expect(screen.getByText('C9-NEW')).toBeInTheDocument();
+      expect(screen.getByText('(cũ: C4)')).toBeInTheDocument();
     });
   });
 });

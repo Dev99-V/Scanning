@@ -11,6 +11,7 @@ export interface ReferenceLine {
   stock_code: string;
   warehouse: string;
   bin: string;
+  previous_bin?: string | null;
   qty: number;
   previous_qty?: number | null;
   create_date?: string | null;
@@ -18,9 +19,10 @@ export interface ReferenceLine {
 
 interface ReferenceDataTableProps {
   onQtyUpdated?: (batchId: string, newQty: number) => void;
+  onBinUpdated?: (batchId: string, newBin: string) => void;
 }
 
-export default function ReferenceDataTable({ onQtyUpdated }: ReferenceDataTableProps = {}) {
+export default function ReferenceDataTable({ onQtyUpdated, onBinUpdated }: ReferenceDataTableProps = {}) {
   const [rows, setRows] = useState<ReferenceLine[]>([]);
   const [smartFilter, setSmartFilter] = useState('');
   const [warehouse, setWarehouse] = useState('');
@@ -34,6 +36,53 @@ export default function ReferenceDataTable({ onQtyUpdated }: ReferenceDataTableP
   const [editQtyInput, setEditQtyInput] = useState('');
   const [isSavingQty, setIsSavingQty] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Trạng thái modal chỉnh sửa vị trí Bin
+  const [editingBinRow, setEditingBinRow] = useState<ReferenceLine | null>(null);
+  const [editBinInput, setEditBinInput] = useState('');
+  const [isSavingBin, setIsSavingBin] = useState(false);
+  const [editBinError, setEditBinError] = useState<string | null>(null);
+
+  function openEditBinModal(row: ReferenceLine) {
+    setEditingBinRow(row);
+    setEditBinInput(row.bin);
+    setEditBinError(null);
+  }
+
+  async function handleSaveBin() {
+    if (!editingBinRow) return;
+    const cleanBin = editBinInput.trim();
+    if (!cleanBin) {
+      setEditBinError('Vị trí (Bin) không được để trống');
+      return;
+    }
+    setIsSavingBin(true);
+    setEditBinError(null);
+    try {
+      const { data, error } = await supabase.rpc('update_reference_bin', {
+        p_batch_id: editingBinRow.batch_id,
+        p_new_bin: cleanBin,
+      });
+      if (error || !data?.ok) {
+        setEditBinError(`Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
+      } else {
+        const oldBin = editingBinRow.bin;
+        setRows((prev) =>
+          prev.map((r) =>
+            r.batch_id === editingBinRow.batch_id
+              ? { ...r, bin: cleanBin, previous_bin: oldBin }
+              : r,
+          ),
+        );
+        onBinUpdated?.(editingBinRow.batch_id, cleanBin);
+        setEditingBinRow(null);
+      }
+    } catch (e) {
+      setEditBinError(`Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsSavingBin(false);
+    }
+  }
 
   function openEditModal(row: ReferenceLine) {
     setEditingRow(row);
@@ -86,7 +135,7 @@ export default function ReferenceDataTable({ onQtyUpdated }: ReferenceDataTableP
       while (!cancelled) {
         let q = supabase
           .from('reference_stock')
-          .select('batch_id,stock_code,warehouse,bin,qty,previous_qty,create_date')
+          .select('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date')
           .order('stock_code', { ascending: true });
 
         if (warehouse.trim()) {
@@ -262,7 +311,28 @@ export default function ReferenceDataTable({ onQtyUpdated }: ReferenceDataTableP
                       <td className="px-3 py-2 font-bold text-slate-200">{r.stock_code}</td>
                       <td className="px-3 py-2 font-bold text-cyan-300">{r.batch_id}</td>
                       <td className="px-3 py-2 text-slate-300">{r.warehouse}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-emerald-300">{r.bin}</td>
+                      {/* Vị trí mới kèm note vị trí cũ gần nhất tại cùng vị trí + nút Sửa vị trí */}
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="text-right">
+                            <span className="font-semibold text-emerald-300">{r.bin}</span>
+                            {r.previous_bin && (
+                              <span className="block text-[10px] font-medium text-amber-400/90">
+                                (cũ: {r.previous_bin})
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openEditBinModal(r)}
+                            title="Chỉnh sửa vị trí (Bin)"
+                            aria-label={`Chỉnh sửa vị trí ${r.batch_id}`}
+                            className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-emerald-500/40 hover:bg-emerald-950/60 hover:text-emerald-300 active:scale-95"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      </td>
 
                       {/* Số lượng mới kèm note số lượng cũ gần nhất tại cùng vị trí + nút Sửa (không có nút xóa) */}
                       <td className="px-3 py-2 text-right">
@@ -423,6 +493,120 @@ export default function ReferenceDataTable({ onQtyUpdated }: ReferenceDataTableP
                 className="rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-cyan-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
               >
                 {isSavingQty ? 'Đang lưu...' : '💾 Lưu thay đổi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal UI nổi chỉnh sửa vị trí Bin Bảng 2 */}
+      {editingBinRow && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-bin-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+        >
+          <div className="glass-panel relative flex w-full max-w-md flex-col rounded-3xl border border-emerald-500/50 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✏️</span>
+                <div>
+                  <h3 id="edit-bin-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
+                    Chỉnh Sửa Vị Trí Nguồn (Bin)
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    Cập nhật vị trí Bin đồng bộ Supabase
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingBin}
+                onClick={() => setEditingBinRow(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3 text-xs">
+              {/* Thông tin mặt hàng */}
+              <div className="space-y-1.5 rounded-2xl border border-white/10 bg-black/60 p-3.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Mã hàng (Stock Code):</span>
+                  <span className="font-bold text-slate-200">{editingBinRow.stock_code}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tag ID (Batch):</span>
+                  <span className="font-bold text-cyan-300">{editingBinRow.batch_id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Kho (Warehouse):</span>
+                  <span className="font-bold text-slate-300">{editingBinRow.warehouse}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Vị trí hiện tại:</span>
+                  <span className="font-bold text-emerald-300">
+                    {editingBinRow.bin}
+                    {editingBinRow.previous_bin && (
+                      <span className="ml-2 font-normal text-amber-400">(cũ: {editingBinRow.previous_bin})</span>
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số lượng:</span>
+                  <span className="font-bold text-white">{editingBinRow.qty}</span>
+                </div>
+              </div>
+
+              {/* Ô nhập vị trí Bin mới */}
+              <div>
+                <label htmlFor="edit-new-bin-input" className="mb-1.5 block font-bold uppercase tracking-wider text-emerald-400 text-[11px]">
+                  Vị trí Bin mới:
+                </label>
+                <input
+                  id="edit-new-bin-input"
+                  type="text"
+                  value={editBinInput}
+                  disabled={isSavingBin}
+                  onChange={(e) => setEditBinInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSaveBin();
+                  }}
+                  autoFocus
+                  className="w-full rounded-xl border-2 border-emerald-500/50 bg-black/70 p-3 text-center font-mono text-xl font-bold uppercase text-emerald-300 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                  placeholder="Nhập vị trí Bin mới..."
+                />
+              </div>
+
+              <p className="text-[11px] text-slate-400 italic">
+                * Sau khi lưu, vị trí hiện tại ({editingBinRow.bin}) sẽ được note lại là vị trí cũ gần nhất ngay tại cột BIN.
+              </p>
+
+              {editBinError && (
+                <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                  {editBinError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                disabled={isSavingBin}
+                onClick={() => setEditingBinRow(null)}
+                className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isSavingBin || !editBinInput.trim()}
+                onClick={() => void handleSaveBin()}
+                className="rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-emerald-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+              >
+                {isSavingBin ? 'Đang lưu...' : '💾 Lưu thay đổi'}
               </button>
             </div>
           </div>

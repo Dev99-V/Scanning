@@ -104,6 +104,60 @@ describe('ReconciliationTable', () => {
     });
   });
 
+  it('bấm nút sửa mở modal UI nổi chỉnh sửa Tag ID và gọi update_scanned_tag_id', async () => {
+    const onRowUpdated = vi.fn();
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-edit', batch_id: 'WRONG_TAG', qty: 5, bin: 'BIN_A' })]}
+        systemByBatch={new Map([['CORRECT_TAG', { stock_code: 'SKU_1', qty: 5, bin: 'BIN_A' }]])}
+        onRowUpdated={onRowUpdated}
+      />,
+    );
+
+    // Bấm nút sửa ✏️ trên dòng
+    const editBtn = screen.getByLabelText('Chỉnh sửa Tag ID WRONG_TAG');
+    fireEvent.click(editBtn);
+
+    // Modal UI nổi xuất hiện
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Chỉnh Sửa Tag ID/i)).toBeInTheDocument();
+
+    // Nhập Tag ID mới
+    const input = screen.getByPlaceholderText('Nhập Tag ID chính xác...');
+    fireEvent.change(input, { target: { value: 'CORRECT_TAG' } });
+
+    // Hiển thị badge khớp nguồn
+    expect(screen.getByText(/Khớp dữ liệu nguồn hệ thống/i)).toBeInTheDocument();
+
+    // Bấm Lưu thay đổi
+    const saveBtn = screen.getByText('💾 Lưu thay đổi');
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('update_scanned_tag_id', {
+        p_id: 'r-edit',
+        p_new_batch_id: 'CORRECT_TAG',
+        p_stock_code: null,
+      });
+      expect(onRowUpdated).toHaveBeenCalled();
+    });
+  });
+
+  it('bấm trực tiếp vào chữ Tag ID cũng mở modal chỉnh sửa', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-click', batch_id: 'CLICK_TAG', qty: 2, bin: 'BIN_B' })]}
+        systemByBatch={new Map()}
+      />,
+    );
+
+    const tagBtn = screen.getByTitle('Bấm để chỉnh sửa Tag ID');
+    fireEvent.click(tagBtn);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText(/Chỉnh Sửa Tag ID/i)).toBeInTheDocument();
+  });
+
   it('KHÔNG liệt kê Tag ID chỉ có trong reference (không hiển thị lại Tag nguồn)', () => {
     render(
       <ReconciliationTable
@@ -128,3 +182,4 @@ describe('ReconciliationTable', () => {
     expect(screen.getByTestId('recon-empty')).toBeInTheDocument();
   });
 });
+
