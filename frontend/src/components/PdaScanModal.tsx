@@ -6,7 +6,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import { downloadStreamingExcel } from '../lib/exportExcel';
 import { resolveDuplicate, submitScan, type ScanStatus } from '../lib/scanApi';
-import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
 
 export const WAITING_BIN = 'WAITING...';
@@ -115,25 +114,11 @@ export default function PdaScanModal({
     // 2. Tra cứu trong file nguồn
     const refItem = systemByBatch.get(tag);
     if (!refItem) {
-      void supabase
-        .from('reference_stock')
-        .select('stock_code,qty,bin')
-        .eq('batch_id', tag)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (data) {
-            systemByBatch.set(tag, { stock_code: data.stock_code, qty: data.qty, bin: data.bin });
-            setIsNotInRefAlert(false);
-            setMatchedStockCode(data.stock_code ?? '');
-            setStockCodeInput(data.stock_code ?? '');
-            qtyInputRef.current?.focus();
-          } else {
-            setIsNotInRefAlert(true);
-            setMatchedStockCode(null);
-            setStockCodeInput('');
-            setTimeout(() => stockCodeInputRef.current?.focus(), 50);
-          }
-        });
+      setIsNotInRefAlert(true);
+      setMatchedStockCode(null);
+      setStockCodeInput('');
+      // Nhảy sang ô Stock code để người dùng điền tay
+      setTimeout(() => stockCodeInputRef.current?.focus(), 50);
     } else {
       setIsNotInRefAlert(false);
       setMatchedStockCode(refItem.stock_code ?? '');
