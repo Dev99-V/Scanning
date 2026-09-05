@@ -26,11 +26,10 @@ tail -4 /tmp/qc6_test.log | grep -E "Test Files|Tests"
 grep -qE "Tests +[1-9][0-9]* passed" /tmp/qc6_test.log || fail "no passing tests"
 pass "vitest"
 
-echo "--- CHECK 4/5: Bảng 2 read-only + lọc (không BATCH) ---"
+echo "--- CHECK 4/5: Bảng 2 read-only + lọc thông minh (đầy đủ các cột nguồn) ---"
 grep -rq "reference_stock" src/components/ReferenceDataTable.tsx || fail "not reading reference_stock"
 grep -rq "Lọc theo kho" src/components/ReferenceDataTable.tsx || fail "missing warehouse filter"
 grep -rq "Lọc theo vị trí" src/components/ReferenceDataTable.tsx || fail "missing bin filter"
-grep -q "batch_id" src/components/ReferenceDataTable.tsx && fail "BATCH column leaked into Table 2"
 pass "reference table"
 
 echo "--- CHECK 5/5: export text-format + cột trạng thái ---"

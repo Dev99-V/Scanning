@@ -16,7 +16,7 @@ export default function ExportButton({ rows, systemByBatch }: ExportButtonProps)
       onClick={() => downloadReconExcel(rows, systemByBatch)}
       className="rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-40"
     >
-      📥 EXPORT XLS ({rows.length})
+      📥 EXPORT XLSX ({rows.length})
     </button>
   );
 }

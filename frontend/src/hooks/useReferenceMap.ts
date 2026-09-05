@@ -17,10 +17,20 @@ export function useReferenceMap() {
 
   const load = useCallback(async () => {
     try {
-      const { data } = await supabase.from('reference_stock').select('batch_id,stock_code,bin,qty');
       const map = new Map<string, SystemNumbers>();
-      for (const r of (data ?? []) as ReferenceRow[]) {
-        map.set(r.batch_id, { stock_code: r.stock_code, qty: r.qty, bin: r.bin });
+      const step = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('reference_stock')
+          .select('batch_id,stock_code,bin,qty')
+          .range(from, from + step - 1);
+        if (error || !data || data.length === 0) break;
+        for (const r of data as ReferenceRow[]) {
+          map.set(r.batch_id, { stock_code: r.stock_code, qty: r.qty, bin: r.bin });
+        }
+        if (data.length < step) break;
+        from += step;
       }
       setByBatch(map);
     } finally {

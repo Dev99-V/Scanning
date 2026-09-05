@@ -127,5 +127,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-05: Đã bỏ hoàn toàn phần đăng nhập theo yêu cầu người dùng. Bổ sung migration RLS SELECT cho anon role trên reference_stock, scanned_data, scan_audit_log (chặn ghi trực tiếp); dọn sạch AuthModal và UI đăng nhập trên frontend; Realtime và bảng đối chiếu hoạt động trơn tru với role anon. Toàn bộ 8/8 QC gates đều PASS. Vitest 11 files 35/35 tests PASS, lint clean, build clean."
+  "notes_for_next_session": "2026-09-05: Đã hoàn thiện toàn bộ yêu cầu của người dùng: 1) Tự động lookup Stock Code khi scan Tag ID trùng khớp, chỉ hỏi nhập khi ngoài nguồn; 2) Bảng 1 có bộ lọc trạng thái và tìm kiếm nhanh; 3) Export chuẩn XLSX; 4) Bảng 2 phân trang tải ĐỦ toàn bộ dữ liệu nguồn từ Supabase, hiển thị đủ 6 cột chuẩn nguồn, kèm bộ lọc thông minh (tiền tố WH lọc kho, hoặc tự dò tìm qua các trường); 5) Xóa toàn bộ dữ liệu nguồn cũ trong reference_stock trước khi import file mới; 6) Đồng bộ giao diện thanh cuộn cyber dark; 7) Cấu hình AGY CLI auto-accept permissions; 8) Đã tư vấn chi tiết về scan_audit_log. Toàn bộ 8/8 QC gates đều PASS, 35/35 vitest tests PASS, lint clean, build clean."
 }

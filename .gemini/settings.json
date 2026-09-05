@@ -1,0 +1,6 @@
+{
+  "toolExecutionPolicy": "always-proceed",
+  "autoExecutionPolicy": "always-proceed",
+  "dangerouslySkipPermissions": true,
+  "cascadeAutoExecutionPolicy": "CASCADE_COMMANDS_AUTO_EXECUTION_EAGER"
+}

@@ -159,6 +159,13 @@ serve(async (req: Request) => {
 
   const records = Array.from(recordMap.values());
   const supabase = createClient(supabaseUrl, serviceKey);
+
+  // Xóa toàn bộ dữ liệu nguồn cũ trước khi nạp dữ liệu mới theo yêu cầu
+  const { error: clearErr } = await supabase.from("reference_stock").delete().neq("batch_id", "");
+  if (clearErr) {
+    return json(500, { ok: false, error: { code: "clear_reference_failed", message: clearErr.message } });
+  }
+
   let upserted = 0;
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const chunk = records.slice(i, i + BATCH_SIZE);

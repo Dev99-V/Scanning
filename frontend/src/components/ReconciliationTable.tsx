@@ -31,6 +31,26 @@ interface ReconciliationTableProps {
 
 export default function ReconciliationTable({ rows, systemByBatch }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
+  const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Lọc theo trạng thái và từ khóa tìm kiếm
+  const filteredRows = React.useMemo(() => {
+    return rows.filter((r) => {
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      if (searchTerm.trim()) {
+        const term = searchTerm.trim().toLowerCase();
+        const sys = systemByBatch.get(r.batch_id);
+        const sc = (r.stock_code ?? sys?.stock_code ?? '').toLowerCase();
+        const tag = r.batch_id.toLowerCase();
+        const bin = r.bin.toLowerCase();
+        if (!sc.includes(term) && !tag.includes(term) && !bin.includes(term)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [rows, statusFilter, searchTerm, systemByBatch]);
 
   if (rows.length === 0) {
     return (
@@ -46,15 +66,57 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const target = e.currentTarget;
     const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 80;
-    if (nearBottom && visibleCount < rows.length) {
-      setVisibleCount((prev) => Math.min(prev + 100, rows.length));
+    if (nearBottom && visibleCount < filteredRows.length) {
+      setVisibleCount((prev) => Math.min(prev + 100, filteredRows.length));
     }
   }
 
-  const displayedRows = rows.slice(0, visibleCount);
+  const displayedRows = filteredRows.slice(0, visibleCount);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
+      {/* Bộ lọc trạng thái & Tìm kiếm ở Bảng 1 */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-white/10 bg-slate-900/60 p-3">
+        {/* Lọc trạng thái bằng dropdown tiện lợi */}
+        <div className="flex items-center gap-2 text-xs">
+          <label htmlFor="recon-status-filter" className="text-[11px] font-bold uppercase text-slate-400">
+            Trạng thái:
+          </label>
+          <select
+            id="recon-status-filter"
+            aria-label="Lọc trạng thái"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as 'all' | ScanStatus);
+              setVisibleCount(100);
+            }}
+            className="rounded-xl border border-white/10 bg-black/50 px-3 py-1.5 font-mono text-xs text-cyan-300 focus:border-indigo-500 focus:outline-none"
+          >
+            <option value="all">Tất cả trạng thái ({rows.length})</option>
+            <option value="ok">Chỉ hiện: Khớp hoàn toàn</option>
+            <option value="qty_mismatch">Chỉ hiện: Lệch số lượng</option>
+            <option value="bin_mismatch">Chỉ hiện: Lệch vị trí bin</option>
+            <option value="not_in_reference">Chỉ hiện: Ngoài hệ thống</option>
+            <option value="duplicate">Chỉ hiện: Trùng Tag</option>
+            <option value="pending">Chỉ hiện: Đang chờ</option>
+          </select>
+        </div>
+
+        {/* Ô tìm kiếm Stock Code / Tag / Bin */}
+        <div className="w-full sm:w-64">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setVisibleCount(100);
+            }}
+            placeholder="🔍 Tìm Stock Code, Tag, Bin..."
+            className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-1.5 font-mono text-xs text-cyan-300 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
       <div
         onScroll={handleScroll}
         className="max-h-[500px] overflow-y-auto overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/80 shadow-inner custom-scrollbar"
@@ -162,15 +224,18 @@ export default function ReconciliationTable({ rows, systemByBatch }: Reconciliat
       <div className="flex items-center justify-between px-2 text-[11px] text-slate-400">
         <span>
           Đang hiển thị <strong className="text-cyan-300">{displayedRows.length}</strong> /{' '}
-          <strong className="text-white">{rows.length}</strong> lượt quét
+          <strong className="text-white">{filteredRows.length}</strong> lượt quét
+          {filteredRows.length !== rows.length && (
+            <span className="text-slate-500"> (Tổng {rows.length})</span>
+          )}
         </span>
-        {visibleCount < rows.length && (
+        {visibleCount < filteredRows.length && (
           <button
             type="button"
-            onClick={() => setVisibleCount((prev) => Math.min(prev + 100, rows.length))}
+            onClick={() => setVisibleCount((prev) => Math.min(prev + 100, filteredRows.length))}
             className="font-bold text-indigo-400 hover:text-indigo-300 transition underline"
           >
-            Cuộn xuống hoặc bấm tải tiếp 100 dòng (còn {rows.length - visibleCount} dòng)
+            Cuộn xuống hoặc bấm tải tiếp 100 dòng (còn {filteredRows.length - visibleCount} dòng)
           </button>
         )}
       </div>

@@ -130,3 +130,25 @@
 - **Bằng chứng đã hết lỗi**: Cả 8/8 QC gates đều PASS. Vitest 11 files 35/35 tests PASS, lint clean, build clean.
 - **Cách phòng tránh lần sau**: Với các ứng dụng kiosk/kho quét mã không yêu cầu định danh người dùng từng lượt quét, luôn mở RLS SELECT cho `anon` để Realtime và bảng đối chiếu hoạt động trơn tru.
 
+### [2026-09-05] Nâng cấp giao diện PDA, bộ lọc thông minh Bảng 2, bộ lọc trạng thái Bảng 1 và xóa data cũ khi import
+
+- **Khu vực**: Frontend (`PdaScanModal.tsx`, `ReconciliationTable.tsx`, `ReferenceDataTable.tsx`, `useReferenceMap.ts`, `exportExcel.ts`) & Backend Edge Function (`import-reference/index.ts`).
+- **Triệu chứng & Yêu cầu người dùng**:
+  1. Khi quét Tag ID trùng với nguồn: tự động tìm Stock Code và focus vào ô Số lượng, chỉ khi không tìm thấy mới bắt nhập Stock Code thủ công.
+  2. Bảng 1 cần có bộ lọc trạng thái (Khớp, Lệch SL, Lệch Bin, Ngoài nguồn, Trùng) và ô tìm kiếm nhanh.
+  3. Xuất file chuẩn `.xlsx` (SheetJS).
+  4. Bảng 2 tải ĐỦ dữ liệu từ Supabase (thay vì giới hạn 1000 dòng mặc định của PostgREST) và render đủ 6 cột dữ liệu (`Stock Code`, `Tag ID`, `Kho`, `Bin`, `Số lượng`, `Ngày tạo`).
+  5. Bộ lọc Bảng 2 thông minh: nếu có tiền tố `WH` (ví dụ `WH01`, `WH50`) thì dò theo cột Kho (`Warehouse`); nếu không có `WH` thì tự động dò tìm qua tất cả các cột dữ liệu khác.
+  6. Khi import file nguồn mới: xóa toàn bộ data cũ trong `reference_stock` trước khi nạp mới vào.
+  7. Đồng bộ màu thanh cuộn theo phong cách cyber dark của hệ thống.
+  8. Tư vấn về bảng `scan_audit_log`: giải thích giá trị lưu trữ truy vết thay đổi / đổi vị trí.
+- **Cách sửa**:
+  1. `PdaScanModal.tsx`: sau khi scan Tag ID, tra cứu `systemByBatch` (hoặc query fallback tức thì tới Supabase `reference_stock`). Nếu khớp, tự set `matchedStockCode` và focus ngay `qtyInputRef`; nếu không khớp mới mở ô nhập `Stock Code`.
+  2. `ReconciliationTable.tsx`: thêm dropdown lọc trạng thái (all, ok, qty_mismatch, bin_mismatch, not_in_reference, duplicate, pending) và thanh tìm kiếm nhanh.
+  3. `useReferenceMap.ts` & `ReferenceDataTable.tsx`: dùng vòng lặp `.range(from, from + 999)` để phân trang lấy toàn bộ dữ liệu từ `reference_stock`, không còn bị cắt ở 1000 dòng.
+  4. `ReferenceDataTable.tsx`: hiển thị đủ 6 cột; bộ lọc thông minh phân tích tiền tố `WH` để tìm theo `Warehouse` hoặc các trường còn lại.
+  5. `import-reference/index.ts`: gọi `supabase.from("reference_stock").delete().neq("batch_id", "")` trước khi chunk upsert.
+  6. `index.css`: thêm CSS chuẩn `::-webkit-scrollbar` và Firefox `scrollbar-color` tông màu slate/cyan/indigo đồng bộ dark mode.
+- **Bằng chứng đã hết lỗi**: Cả 8/8 QC gates đều PASS. Vitest 11 files 35/35 tests PASS, lint clean, build clean.
+- **Cách phòng tránh lần sau**: Với Supabase PostgREST, mặc định mỗi query chỉ trả tối đa 1000 records. Với bảng danh mục lớn (như 2721 dòng `reference_stock`), bắt buộc phải dùng vòng lặp `.range()` hoặc RPC phân trang để tải đủ.
+
