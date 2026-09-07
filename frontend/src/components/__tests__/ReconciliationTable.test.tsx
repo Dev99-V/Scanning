@@ -218,5 +218,18 @@ describe('ReconciliationTable', () => {
     render(<ReconciliationTable rows={[]} systemByBatch={new Map()} />);
     expect(screen.getByTestId('recon-empty')).toBeInTheDocument();
   });
+
+  it('hiển thị badge 🏷️ 7055 bên cạnh Tag ID ở Bảng 1 khi tag thuộc diện 7055', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-7055', batch_id: 'TAG_IN_THEM_7055', qty: 10, bin: 'C4' })]}
+        systemByBatch={new Map([['TAG_IN_THEM_7055', { qty: 10, bin: 'C4', tag_7055: true }]])}
+      />,
+    );
+
+    const badge = screen.getByTestId('recon-tag-7055-TAG_IN_THEM_7055');
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent('7055');
+  });
 });
 

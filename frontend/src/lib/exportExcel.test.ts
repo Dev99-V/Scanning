@@ -42,4 +42,37 @@ describe('buildReconWorkbook', () => {
     expect(data[2][3]).toBeFalsy();
     expect(data[2][5]).toBeFalsy();
   });
+
+  it('build7055Workbook xuất đúng định dạng bảng đặc biệt 7055 và ép text', async () => {
+    const rows7055 = [
+      {
+        batch_id: '000070550001',
+        stock_code: '3400010001',
+        warehouse: 'WH01',
+        bin: '010101',
+        qty: 150,
+        create_date: '2026-09-07T00:00:00Z',
+      },
+    ];
+    const { build7055Workbook } = await import('./exportExcel');
+    const wb7055 = build7055Workbook(rows7055);
+    const ws = wb7055.Sheets['Tag_in_them_7055'];
+    expect(ws).toBeDefined();
+
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as unknown[][];
+    expect(data[0]).toEqual([
+      'Mã hàng (Stock Code)',
+      'Tag ID (Batch)',
+      'Kho (Warehouse)',
+      'Vị trí (Bin)',
+      'Số lượng',
+      'Ngày tạo',
+    ]);
+    expect(data).toHaveLength(2);
+
+    // Tag ID giữ số 0 đầu với dấu nháy
+    const tagCell = ws['B2'] as { v: string; z: string };
+    expect(tagCell.v).toBe("'000070550001");
+    expect(tagCell.z).toBe('@');
+  });
 });

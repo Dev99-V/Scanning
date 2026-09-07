@@ -19,4 +19,5 @@ export interface ReferenceRow {
   warehouse: string;
   bin: string;
   qty: number;
+  tag_7055?: boolean;
 }

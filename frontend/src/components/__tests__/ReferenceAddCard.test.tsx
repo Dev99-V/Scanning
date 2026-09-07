@@ -198,4 +198,42 @@ describe('ReferenceAddCard', () => {
       );
     });
   });
+
+  it('tích chọn 7055 khi thêm mới sẽ gửi p_tag_7055=true vào RPC và trả về callback có tag_7055=true', async () => {
+    const onAddSuccess = vi.fn();
+    render(<ReferenceAddCard existingRows={existingRows} onAddSuccess={onAddSuccess} />);
+
+    // Nhập các trường
+    fireEvent.change(screen.getByLabelText(/Tag ID \(Batch\)/i), { target: { value: 'TAG7055_NEW' } });
+    fireEvent.change(screen.getByLabelText(/Mã hàng \(Stock Code\)/i), { target: { value: '3400010001' } });
+    fireEvent.change(screen.getByLabelText(/Kho \(Warehouse\)/i), { target: { value: 'WH01' } });
+    fireEvent.change(screen.getByLabelText(/Vị trí \(Bin\)/i), { target: { value: 'C4' } });
+    fireEvent.change(screen.getByLabelText(/Số lượng/i), { target: { value: '50' } });
+
+    // Tích chọn checkbox 7055
+    const checkbox7055 = screen.getByTestId('ref-add-checkbox-7055');
+    expect(checkbox7055).not.toBeChecked();
+    fireEvent.click(checkbox7055);
+    expect(checkbox7055).toBeChecked();
+
+    // Bấm Thêm Vào Dữ Liệu Nguồn
+    fireEvent.click(screen.getByRole('button', { name: /Thêm Vào Dữ Liệu Nguồn/i }));
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith(
+        'add_reference_stock',
+        expect.objectContaining({
+          p_batch_id: 'TAG7055_NEW',
+          p_tag_7055: true,
+        }),
+      );
+    });
+
+    expect(onAddSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        batch_id: 'TAG7055_NEW',
+        tag_7055: true,
+      }),
+    );
+  });
 });

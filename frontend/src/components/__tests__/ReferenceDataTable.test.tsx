@@ -43,7 +43,7 @@ describe('ReferenceDataTable', () => {
   it('select đầy đủ cột nguồn bao gồm batch_id, previous_bin và previous_qty, render các dòng', async () => {
     render(<ReferenceDataTable />);
     await waitFor(() =>
-      expect(select).toHaveBeenCalledWith('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date')
+      expect(select).toHaveBeenCalledWith('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date,tag_7055')
     );
     expect(await screen.findByText('3400010001')).toBeInTheDocument();
     expect(screen.getByText('TAG001')).toBeInTheDocument();
@@ -388,6 +388,103 @@ describe('ReferenceDataTable', () => {
     // Cả 2 ô Bin và Qty đều được highlight
     expect(screen.getByTestId('ref-cell-bin-mismatch')).toHaveTextContent('200202');
     expect(screen.getByTestId('ref-cell-qty-mismatch')).toHaveTextContent('1000');
+  });
+
+  it('hiển thị badge 🏷️ 7055 bên cạnh Tag ID khi dòng có tag_7055=true', async () => {
+    range.mockReturnValueOnce(
+      Promise.resolve({
+        data: [
+          {
+            batch_id: 'TAG001',
+            stock_code: '3400010001',
+            warehouse: '01',
+            bin: '200202',
+            qty: 1000,
+            previous_qty: null,
+            create_date: '2026-09-04',
+            tag_7055: true,
+          },
+        ],
+        error: null,
+      }),
+    );
+
+    render(<ReferenceDataTable />);
+    await screen.findByText('3400010001');
+
+    const badge7055 = screen.getByTestId('ref-tag-7055-TAG001');
+    expect(badge7055).toBeInTheDocument();
+    expect(badge7055).toHaveTextContent('7055');
+  });
+
+  it('bộ lọc Chỉ hiển thị dữ liệu dư: lọc ra các dòng không được highlight', async () => {
+    const mockScannedRows = [
+      {
+        id: 's1',
+        batch_id: 'TAG001',
+        qty: 1000,
+        bin: '200202',
+        stock_code: '3400010001',
+        status: 'ok' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:00:00Z',
+      },
+    ];
+
+    render(<ReferenceDataTable scannedRows={mockScannedRows} />);
+    await screen.findByText('3400010001');
+
+    // TAG001 khớp (được highlight), TAG002 chưa quét (dữ liệu dư, không được highlight)
+    const excessBtn = screen.getByTestId('btn-filter-excess');
+    expect(excessBtn).toHaveTextContent(/Chỉ hiển thị dữ liệu dư \(1\)/i);
+
+    // Bấm lọc dữ liệu dư
+    fireEvent.click(excessBtn);
+
+    // TAG002 (dư) hiển thị, TAG001 (đã khớp) bị ẩn
+    expect(screen.getByText('TAG002')).toBeInTheDocument();
+    expect(screen.queryByText('TAG001')).not.toBeInTheDocument();
+
+    // Bấm nút Chỉ hiện đã khớp thì tự động tắt lọc dữ liệu dư
+    const matchedBtn = screen.getByLabelText('Lọc dòng đã khớp Bảng 1');
+    fireEvent.click(matchedBtn);
+
+    // TAG001 (khớp) hiển thị, TAG002 (dư) bị ẩn
+    expect(screen.getByText('TAG001')).toBeInTheDocument();
+    expect(screen.queryByText('TAG002')).not.toBeInTheDocument();
+  });
+
+  it('chuyển đổi phép tính trong modal chỉnh sửa số lượng Bảng 2: chọn dấu + chuyển thành phép cộng', async () => {
+    render(<ReferenceDataTable />);
+    await screen.findByText('3400010001');
+
+    // Mở modal sửa số lượng TAG001 (cũ: 1000)
+    const editBtn = screen.getByLabelText('Chỉnh sửa số lượng TAG001');
+    fireEvent.click(editBtn);
+
+    const qtyInput = screen.getByLabelText('Số lượng điền mới');
+    fireEvent.change(qtyInput, { target: { value: '250' } });
+
+    // Mặc định là phép trừ: 1000 - 250 = 750
+    expect(screen.getByTestId('ref-calculated-qty')).toHaveTextContent('750');
+
+    // Bấm vào nút + Cộng
+    const addBtn = screen.getByTestId('ref-op-add');
+    fireEvent.click(addBtn);
+
+    // Chuyển thành phép cộng: 1000 + 250 = 1250
+    expect(screen.getByTestId('ref-calculated-qty')).toHaveTextContent('1250');
+
+    // Bấm nút Lưu thay đổi
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('update_reference_qty', {
+        p_batch_id: 'TAG001',
+        p_new_qty: 1250,
+      });
+    });
   });
 });
 

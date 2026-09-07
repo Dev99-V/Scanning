@@ -127,6 +127,7 @@ export default function App() {
             stock_code: newRow.stock_code,
             qty: newRow.qty,
             bin: newRow.bin,
+            tag_7055: newRow.tag_7055,
           });
           void refetch();
         }}

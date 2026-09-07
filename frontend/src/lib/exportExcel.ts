@@ -91,3 +91,57 @@ export function downloadStreamingExcel(rows: ScanRow[]): void {
   XLSX.utils.book_append_sheet(wb, ws, 'QuetTag_Streaming');
   XLSX.writeFile(wb, `QuetTag_${Date.now()}.xlsx`);
 }
+
+export interface Row7055Item {
+  batch_id: string;
+  stock_code: string;
+  warehouse: string;
+  bin: string;
+  qty: number;
+  create_date?: string | null;
+}
+
+export function build7055Workbook(rows: Row7055Item[]): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  const header = ['Mã hàng (Stock Code)', 'Tag ID (Batch)', 'Kho (Warehouse)', 'Vị trí (Bin)', 'Số lượng', 'Ngày tạo'];
+  const data: unknown[][] = [header];
+  for (const r of rows) {
+    let dStr = r.create_date || '';
+    if (dStr) {
+      try {
+        const d = new Date(dStr);
+        if (!isNaN(d.getTime())) dStr = d.toLocaleDateString('vi-VN');
+      } catch {
+        // keep dStr
+      }
+    }
+    data.push([
+      textCell(r.stock_code ?? ''),
+      textCell(r.batch_id),
+      textCell(r.warehouse ?? ''),
+      textCell(r.bin ?? ''),
+      textCell(r.qty),
+      textCell(dStr),
+    ]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    for (let R = range.s.r + 1; R <= range.e.r; R++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c });
+      const cell = ws[addr] as { z?: string } | undefined;
+      if (cell && typeof cell === 'object') cell.z = '@';
+      else ws[addr] = { v: '', t: 's', z: '@' };
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, ws, 'Tag_in_them_7055');
+  return wb;
+}
+
+export function download7055Excel(rows: Row7055Item[], customFileName?: string): void {
+  const wb = build7055Workbook(rows);
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = customFileName || `Tag in thêm 7055 ${today}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+}
+

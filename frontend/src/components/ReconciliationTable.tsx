@@ -251,14 +251,25 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
 
                   {/* Tag ID (bấm để sửa hoặc dùng nút ở cột Thao tác) */}
                   <td className="px-3 py-2.5 font-bold text-cyan-300">
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(r)}
-                      title="Bấm để chỉnh sửa Tag ID"
-                      className="hover:underline hover:text-cyan-200 transition text-left font-bold"
-                    >
-                      {r.batch_id}
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(r)}
+                        title="Bấm để chỉnh sửa Tag ID"
+                        className="hover:underline hover:text-cyan-200 transition text-left font-bold"
+                      >
+                        {r.batch_id}
+                      </button>
+                      {Boolean(sys?.tag_7055) && (
+                        <span
+                          data-testid={`recon-tag-7055-${r.batch_id}`}
+                          title="Tag in thêm 7055"
+                          className="inline-flex items-center gap-1 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-purple-300 shadow-sm"
+                        >
+                          <span>🏷️ 7055</span>
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Số lượng quét (bấm để chỉnh sửa hoặc dùng nút ở cột Thao tác) */}

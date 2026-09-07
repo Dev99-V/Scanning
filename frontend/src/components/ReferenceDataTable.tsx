@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
 import ReferenceAddCard from './ReferenceAddCard';
 import ReferenceImportCard from './ReferenceImportCard';
+import Reference7055Card from './Reference7055Card';
 
 export interface ReferenceLine {
   batch_id: string;
@@ -17,6 +18,7 @@ export interface ReferenceLine {
   qty: number;
   previous_qty?: number | null;
   create_date?: string | null;
+  tag_7055?: boolean;
 }
 
 interface ReferenceDataTableProps {
@@ -37,6 +39,7 @@ export default function ReferenceDataTable({
   const [warehouse, setWarehouse] = useState('');
   const [bin, setBin] = useState('');
   const [matchedOnlyFilter, setMatchedOnlyFilter] = useState(false);
+  const [excessOnlyFilter, setExcessOnlyFilter] = useState(false);
   const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(100);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -123,9 +126,32 @@ export default function ReferenceDataTable({
     return count;
   }, [rows, isRowQtyMismatch]);
 
+  // Kiểm tra dòng không được highlight (dữ liệu dư so với thực tế: không khớp, không lệch bin, không lệch sl)
+  const isRowUnhighlighted = React.useCallback(
+    (r: ReferenceLine): boolean => {
+      return !isRowMatched(r) && !isRowBinMismatch(r) && !isRowQtyMismatch(r);
+    },
+    [isRowMatched, isRowBinMismatch, isRowQtyMismatch],
+  );
+
+  // Đếm số dòng dữ liệu dư (không được highlight)
+  const excessCount = useMemo(() => {
+    let count = 0;
+    for (const r of rows) {
+      if (isRowUnhighlighted(r)) count++;
+    }
+    return count;
+  }, [rows, isRowUnhighlighted]);
+
+  // Danh sách các dòng được đánh dấu 7055
+  const rows7055 = useMemo(() => {
+    return rows.filter((r) => Boolean(r.tag_7055));
+  }, [rows]);
+
   // Trạng thái modal chỉnh sửa số lượng (không có nút xóa)
   const [editingRow, setEditingRow] = useState<ReferenceLine | null>(null);
   const [editQtyInput, setEditQtyInput] = useState('');
+  const [qtyOperation, setQtyOperation] = useState<'subtract' | 'add'>('subtract');
   const [isSavingQty, setIsSavingQty] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -179,6 +205,7 @@ export default function ReferenceDataTable({
   function openEditModal(row: ReferenceLine) {
     setEditingRow(row);
     setEditQtyInput('');
+    setQtyOperation('subtract');
     setEditError(null);
   }
 
@@ -189,13 +216,13 @@ export default function ReferenceDataTable({
       setEditError('Vui lòng nhập số lượng điền mới');
       return;
     }
-    const deduct = Number(cleanInput);
-    if (isNaN(deduct) || deduct < 0) {
+    const delta = Number(cleanInput);
+    if (isNaN(delta) || delta < 0) {
       setEditError('Số lượng điền mới phải là một số không âm hợp lệ');
       return;
     }
-    const newQ = editingRow.qty - deduct;
-    if (newQ < 0) {
+    const newQ = qtyOperation === 'subtract' ? editingRow.qty - delta : editingRow.qty + delta;
+    if (qtyOperation === 'subtract' && newQ < 0) {
       setEditError('Số lượng điền mới không được vượt quá số lượng cũ (tồn kho không được âm)');
       return;
     }
@@ -237,7 +264,7 @@ export default function ReferenceDataTable({
       while (!cancelled) {
         const q = supabase
           .from('reference_stock')
-          .select('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date')
+          .select('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date,tag_7055')
           .order('stock_code', { ascending: true });
 
         const res = await (q.range ? q.range(from, from + step - 1) : q);
@@ -270,6 +297,11 @@ export default function ReferenceDataTable({
     // Lọc dòng đã khớp nếu bật toggle
     if (matchedOnlyFilter) {
       list = list.filter((r) => isRowMatched(r));
+    }
+
+    // Lọc dòng dữ liệu dư (không được highlight: không khớp, không lệch bin, không lệch sl)
+    if (excessOnlyFilter) {
+      list = list.filter((r) => !isRowMatched(r) && !isRowBinMismatch(r) && !isRowQtyMismatch(r));
     }
 
     // Ô thứ 2: Dùng để tìm WH (Kho)
@@ -317,7 +349,7 @@ export default function ReferenceDataTable({
     }
 
     return list;
-  }, [rows, smartFilter, warehouse, bin, matchedOnlyFilter, isRowMatched, isRowBinMismatch, isRowQtyMismatch]);
+  }, [rows, smartFilter, warehouse, bin, matchedOnlyFilter, excessOnlyFilter, isRowMatched, isRowBinMismatch, isRowQtyMismatch]);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const target = e.currentTarget;
@@ -342,8 +374,8 @@ export default function ReferenceDataTable({
 
   return (
     <section aria-label="Dữ liệu hệ thống" className="flex flex-col gap-4">
-      {/* Khu vực thẻ hoạt động Bảng 2: Import file nguồn & Thêm dữ liệu nguồn mới */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Khu vực thẻ hoạt động Bảng 2: Import file nguồn & Thêm dữ liệu nguồn mới & Tag in thêm 7055 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <ReferenceImportCard onImportSuccess={() => setRefreshTrigger((prev) => prev + 1)} />
         <ReferenceAddCard
           existingRows={rows}
@@ -352,6 +384,7 @@ export default function ReferenceDataTable({
             onReferenceAdded?.(newRow);
           }}
         />
+        <Reference7055Card rows7055={rows7055} />
       </div>
 
       {/* Bảng dữ liệu nguồn tra cứu */}
@@ -395,10 +428,10 @@ export default function ReferenceDataTable({
             </div>
           </div>
 
-          {/* Hàng bộ lọc: Bộ lọc thông minh & Lọc kho / vị trí & Nút lọc nhanh đã khớp */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+          {/* Hàng bộ lọc: Bộ lọc thông minh & Lọc kho / vị trí & Nút lọc nhanh đã khớp & Chỉ hiển thị dữ liệu dư */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
             {/* Ô 1: Dò tìm Tag ID hoặc Stock Code */}
-            <div className="relative md:col-span-1">
+            <div className="relative">
               <input
                 aria-label="Tìm kiếm thông minh"
                 type="text"
@@ -442,6 +475,7 @@ export default function ReferenceDataTable({
                 type="button"
                 onClick={() => {
                   setMatchedOnlyFilter((prev) => !prev);
+                  setExcessOnlyFilter(false);
                   setVisibleCount(100);
                 }}
                 aria-label="Lọc dòng đã khớp Bảng 1"
@@ -453,6 +487,28 @@ export default function ReferenceDataTable({
               >
                 <span>{matchedOnlyFilter ? '✓' : '🔍'}</span>
                 <span>Chỉ hiện đã khớp ({matchedCount})</span>
+              </button>
+            </div>
+
+            {/* Nút lọc nhanh dòng dữ liệu dư (không được highlight) */}
+            <div>
+              <button
+                type="button"
+                data-testid="btn-filter-excess"
+                onClick={() => {
+                  setExcessOnlyFilter((prev) => !prev);
+                  setMatchedOnlyFilter(false);
+                  setVisibleCount(100);
+                }}
+                aria-label="Chỉ hiển thị dữ liệu dư"
+                className={`w-full flex items-center justify-center gap-1.5 rounded-xl border p-2.5 font-mono text-xs font-bold transition active:scale-95 ${
+                  excessOnlyFilter
+                    ? 'border-cyan-500 bg-cyan-500/25 text-cyan-300 shadow-md shadow-cyan-500/20'
+                    : 'border-white/10 bg-black/50 text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300'
+                }`}
+              >
+                <span>{excessOnlyFilter ? '✓' : '📦'}</span>
+                <span>Chỉ hiển thị dữ liệu dư ({excessCount})</span>
               </button>
             </div>
           </div>
@@ -532,6 +588,15 @@ export default function ReferenceDataTable({
                             >
                               {r.batch_id}
                             </span>
+                            {r.tag_7055 && (
+                              <span
+                                data-testid={`ref-tag-7055-${r.batch_id}`}
+                                title="Tag in thêm 7055"
+                                className="inline-flex items-center gap-1 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-purple-300 shadow-sm"
+                              >
+                                <span>🏷️ 7055</span>
+                              </span>
+                            )}
                             {isMatched && (
                               <span
                                 title="Dữ liệu đã khớp hoàn toàn với Bảng 1"
@@ -724,6 +789,39 @@ export default function ReferenceDataTable({
                 </div>
               </div>
 
+              {/* Chọn phép tính: Trừ (mặc định) hoặc Cộng */}
+              <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/40 px-3.5 py-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Phép tính:
+                </span>
+                <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/70 p-1">
+                  <button
+                    type="button"
+                    data-testid="ref-op-subtract"
+                    onClick={() => setQtyOperation('subtract')}
+                    className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
+                      qtyOperation === 'subtract'
+                        ? 'bg-rose-500/30 text-rose-300 border border-rose-500/50 shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    − Trừ (mặc định)
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="ref-op-add"
+                    onClick={() => setQtyOperation('add')}
+                    className={`rounded-lg px-3 py-1 text-xs font-bold transition ${
+                      qtyOperation === 'add'
+                        ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/50 shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    + Cộng
+                  </button>
+                </div>
+              </div>
+
               {/* Hàng 2 ô: Ô số lượng cũ (giữ lại) và Ô số lượng điền mới bên cạnh */}
               <div className="grid grid-cols-2 gap-3">
                 {/* Ô số lượng cũ */}
@@ -763,11 +861,11 @@ export default function ReferenceDataTable({
                 </div>
               </div>
 
-              {/* Tự động tính toán: Lấy số lượng cũ trừ đi số lượng mới điền cho ra kết quả mới */}
+              {/* Tự động tính toán: Lấy số lượng cũ trừ hoặc cộng số lượng mới điền cho ra kết quả mới */}
               {(() => {
-                const deductNum = editQtyInput.trim() === '' ? 0 : Number(editQtyInput);
-                const calcResult = editingRow.qty - deductNum;
-                const isNegative = !isNaN(deductNum) && calcResult < 0;
+                const delta = editQtyInput.trim() === '' ? 0 : Number(editQtyInput);
+                const calcResult = qtyOperation === 'subtract' ? editingRow.qty - delta : editingRow.qty + delta;
+                const isNegative = qtyOperation === 'subtract' && !isNaN(delta) && calcResult < 0;
                 return (
                   <div
                     className={`rounded-2xl border p-3 font-mono text-xs transition-colors ${
@@ -777,9 +875,11 @@ export default function ReferenceDataTable({
                     }`}
                   >
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400">Công thức trừ tự động:</span>
+                      <span className="text-slate-400">
+                        {qtyOperation === 'subtract' ? 'Công thức trừ tự động:' : 'Công thức cộng:'}
+                      </span>
                       <span className="font-bold">
-                        {editingRow.qty} - {deductNum} ={' '}
+                        {editingRow.qty} {qtyOperation === 'subtract' ? '-' : '+'} {delta} ={' '}
                         <strong
                           data-testid="ref-calculated-qty"
                           className={isNegative ? 'text-rose-400 font-extrabold' : 'text-emerald-300 font-extrabold'}
@@ -802,7 +902,7 @@ export default function ReferenceDataTable({
               })()}
 
               <p className="text-[11px] text-slate-400 italic">
-                * Hệ thống tự động lấy số lượng cũ ({editingRow.qty}) trừ đi số lượng mới điền. Sau khi lưu, kết quả mới sẽ hiển thị tại cột Số lượng và số lượng cũ được ghi chú bên dưới (cũ: {editingRow.qty}).
+                * Hệ thống tự động lấy số lượng cũ ({editingRow.qty}) {qtyOperation === 'subtract' ? 'trừ đi' : 'cộng thêm'} số lượng mới điền. Sau khi lưu, kết quả mới sẽ hiển thị tại cột Số lượng và số lượng cũ được ghi chú bên dưới (cũ: {editingRow.qty}).
               </p>
 
               {editError && (

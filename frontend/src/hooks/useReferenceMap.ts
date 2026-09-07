@@ -9,6 +9,7 @@ export interface SystemNumbers {
   stock_code?: string;
   qty: number;
   bin: string;
+  tag_7055?: boolean;
 }
 
 export function useReferenceMap() {
@@ -23,11 +24,16 @@ export function useReferenceMap() {
       while (true) {
         const { data, error } = await supabase
           .from('reference_stock')
-          .select('batch_id,stock_code,bin,qty')
+          .select('batch_id,stock_code,bin,qty,tag_7055')
           .range(from, from + step - 1);
         if (error || !data || data.length === 0) break;
         for (const r of data as ReferenceRow[]) {
-          map.set(r.batch_id, { stock_code: r.stock_code, qty: r.qty, bin: r.bin });
+          map.set(r.batch_id, {
+            stock_code: r.stock_code,
+            qty: r.qty,
+            bin: r.bin,
+            tag_7055: Boolean(r.tag_7055),
+          });
         }
         if (data.length < step) break;
         from += step;

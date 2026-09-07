@@ -20,6 +20,7 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess }: Referen
   const [bin, setBin] = useState('');
   const [qty, setQty] = useState('');
   const [createDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [is7055, setIs7055] = useState(false);
 
   // Trạng thái gợi ý dropdown
   const [showStockDropdown, setShowStockDropdown] = useState(false);
@@ -124,6 +125,7 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess }: Referen
         p_qty: numQty,
         p_create_date: new Date(`${createDate}T00:00:00Z`).toISOString(),
         p_overwrite: overwrite,
+        p_tag_7055: is7055,
       });
 
       if (error) {
@@ -149,13 +151,15 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess }: Referen
         create_date: `${createDate}T00:00:00Z`,
         previous_bin: null,
         previous_qty: null,
+        tag_7055: is7055,
       };
 
-      setSuccessMessage(`✅ Đã thêm Tag ID ${cleanBatch} vào nguồn thành công!`);
+      setSuccessMessage(`✅ Đã thêm Tag ID ${cleanBatch} vào nguồn thành công!${is7055 ? ' (Đánh dấu 7055)' : ''}`);
       // Giữ lại Stock Code và Kho nếu muốn tiếp tục add nhanh nhiều tag cùng loại, xóa batch, bin, qty
       setBatchId('');
       setBin('');
       setQty('');
+      setIs7055(false);
 
       onAddSuccess?.(created);
     } catch (err) {
@@ -342,6 +346,29 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess }: Referen
                 className="w-full rounded-xl border border-white/5 bg-slate-950/80 px-3 py-2 font-mono text-xs text-slate-400 cursor-not-allowed"
               />
             </div>
+          </div>
+
+          {/* Tích chọn 7055 (Tag in thêm) */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-purple-500/30 bg-purple-950/20 px-3 py-2">
+            <label
+              htmlFor="ref-add-tag-7055"
+              className="inline-flex items-center gap-2 cursor-pointer select-none"
+            >
+              <input
+                id="ref-add-tag-7055"
+                data-testid="ref-add-checkbox-7055"
+                type="checkbox"
+                checked={is7055}
+                onChange={(e) => setIs7055(e.target.checked)}
+                className="h-4 w-4 rounded border-purple-500 bg-black/60 text-purple-600 focus:ring-purple-500 focus:ring-offset-0 cursor-pointer accent-purple-500"
+              />
+              <span className="font-cyber text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+                <span>🏷️</span> 7055
+              </span>
+            </label>
+            <span className="text-[10px] text-slate-400 italic">
+              * Tích chọn để đánh dấu và đưa vào danh sách Tag in thêm 7055
+            </span>
           </div>
 
           {/* Cảnh báo trùng Tag ID */}
