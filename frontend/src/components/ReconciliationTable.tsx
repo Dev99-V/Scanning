@@ -1,8 +1,10 @@
 // ReconciliationTable — Bảng 1: dữ liệu quét thực tế & đối chiếu (Plan.md §7.2).
 // Cột: Stock code, Tag id, Số lượng, Bin, Số lượng hệ thống, Bin hệ thống, Trạng thái & Ghi chú cảnh báo.
 // Hỗ trợ cuộn chuột 100 dòng tự động tải tiếp (Infinite Scroll / Virtualization Chunking).
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
+import type { UsePresenceApi } from '../hooks/usePresence';
+import { table1RowKey } from '../hooks/presenceHelpers';
 import type { ScanStatus } from '../lib/scanApi';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
@@ -30,9 +32,11 @@ interface ReconciliationTableProps {
   systemByBatch: Map<string, SystemNumbers>;
   onRowDeleted?: (id: string) => void;
   onRowUpdated?: () => void;
+  /** Presence realtime (khóa mềm theo dòng). Không bắt buộc để test cũ vẫn chạy. */
+  presence?: UsePresenceApi | null;
 }
 
-export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated }: ReconciliationTableProps) {
+export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, presence }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -49,6 +53,18 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
   const [editNotice, setEditNotice] = useState<string | null>(null);
 
   function openEditModal(r: ScanRow) {
+    // Khóa mềm: dòng đang bị người khác sửa thì không cho mở modal.
+    const holder = presence?.getLock('table1', table1RowKey(r.id));
+    if (holder) {
+      setEditNotice(`🔒 ${holder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới.`);
+      return;
+    }
+    presence?.setEditing({
+      table: 'table1',
+      key: table1RowKey(r.id),
+      batchId: (r.batch_id || '').trim(),
+      label: 'sửa lượt quét Bảng 1',
+    });
     setEditingRow(r);
     setNewTagId(r.batch_id);
     setEditQty(String(r.qty));
@@ -84,13 +100,39 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
         setEditNotice(`❌ Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
       } else {
         onRowUpdated?.();
-        setEditingRow(null);
+        closeEditModal();
       }
     } catch (err) {
       setEditNotice(`❌ Lỗi kết nối: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsSavingTag(false);
     }
+  }
+
+  // Nhả khóa presence khi unmount (đóng tab giữa chừng) để dòng không kẹt.
+  useEffect(() => () => presence?.clearEditing(), [presence]);
+
+  function closeEditModal() {
+    setEditingRow(null);
+    presence?.clearEditing();
+  }
+
+  function openDeleteModal(r: ScanRow) {
+    const holder = presence?.getLock('table1', table1RowKey(r.id));
+    if (holder) return;
+    presence?.setEditing({
+      table: 'table1',
+      key: table1RowKey(r.id),
+      batchId: (r.batch_id || '').trim(),
+      label: 'xóa lượt quét Bảng 1',
+    });
+    setDeleteNotice(null);
+    setDeletingRow(r);
+  }
+
+  function closeDeleteModal() {
+    setDeletingRow(null);
+    presence?.clearEditing();
   }
 
   async function handleConfirmDelete() {
@@ -103,7 +145,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
         setDeleteNotice(`❌ Lỗi xóa: ${error?.message || data?.error || 'Không xác định'}`);
       } else {
         onRowDeleted?.(deletingRow.id);
-        setDeletingRow(null);
+        closeDeleteModal();
       }
     } catch (e) {
       setDeleteNotice(`❌ Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
@@ -248,6 +290,8 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               const stockCode = r.stock_code ?? sys?.stock_code ?? '—';
               const scanCount = batchCounts.get(r.batch_id?.trim() ?? '') ?? 1;
               const isDuplicate = scanCount > 1 || r.status === 'duplicate';
+              // Khóa mềm realtime: dòng đang bị người khác sửa/xóa thì disable.
+              const lockHolder = presence?.getLock('table1', table1RowKey(r.id)) ?? null;
 
               // Ghi chú chi tiết cho dòng
               let note = '';
@@ -282,8 +326,9 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                       <button
                         type="button"
                         onClick={() => openEditModal(r)}
-                        title="Bấm để chỉnh sửa Tag ID"
-                        className="hover:underline hover:text-cyan-200 transition text-left font-bold"
+                        disabled={Boolean(lockHolder)}
+                        title={lockHolder ? `${lockHolder.name} đang thao tác dòng này` : 'Bấm để chỉnh sửa Tag ID'}
+                        className="hover:underline hover:text-cyan-200 transition text-left font-bold disabled:no-underline disabled:opacity-60"
                       >
                         {r.batch_id}
                       </button>
@@ -304,8 +349,9 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                     <button
                       type="button"
                       onClick={() => openEditModal(r)}
-                      title="Bấm để chỉnh sửa lượt quét"
-                      className="hover:underline transition text-right font-bold inline-block"
+                      disabled={Boolean(lockHolder)}
+                      title={lockHolder ? `${lockHolder.name} đang thao tác dòng này` : 'Bấm để chỉnh sửa lượt quét'}
+                      className="hover:underline transition text-right font-bold inline-block disabled:no-underline disabled:opacity-60"
                     >
                       <span
                         className={
@@ -372,7 +418,14 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
 
                   {/* Ghi chú cảnh báo (màu đỏ nếu chênh lệch hoặc trùng quét) */}
                   <td className="px-3 py-2.5 text-left text-[11px]">
-                    {isDuplicate || isQtyDiff || isBinDiff || r.status === 'qty_mismatch' || r.status === 'bin_mismatch' ? (
+                    {lockHolder ? (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-950/60 px-2 py-0.5 font-bold text-amber-300"
+                        title={`${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới`}
+                      >
+                        🔒 {lockHolder.name} đang thao tác
+                      </span>
+                    ) : isDuplicate || isQtyDiff || isBinDiff || r.status === 'qty_mismatch' || r.status === 'bin_mismatch' ? (
                       <span className="text-rose-400 font-bold">{note}</span>
                     ) : r.status === 'ok' ? (
                       <span className="text-emerald-400 font-semibold">{note}</span>
@@ -387,21 +440,20 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                       <button
                         type="button"
                         onClick={() => openEditModal(r)}
-                        title="Chỉnh sửa Tag ID"
+                        disabled={Boolean(lockHolder)}
+                        title={lockHolder ? `${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới` : 'Chỉnh sửa Tag ID'}
                         aria-label={`Chỉnh sửa Tag ID ${r.batch_id}`}
-                        className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                        className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
                       >
                         ✏️
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setDeleteNotice(null);
-                          setDeletingRow(r);
-                        }}
-                        title="Xóa lượt quét nhầm"
+                        onClick={() => openDeleteModal(r)}
+                        disabled={Boolean(lockHolder)}
+                        title={lockHolder ? `${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới` : 'Xóa lượt quét nhầm'}
                         aria-label={`Xóa lượt quét ${r.batch_id}`}
-                        className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-950/60 hover:text-rose-300 active:scale-95"
+                        className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-950/60 hover:text-rose-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
                       >
                         🗑️
                       </button>
@@ -458,7 +510,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               <button
                 type="button"
                 disabled={isDeleting}
-                onClick={() => setDeletingRow(null)}
+                onClick={() => closeDeleteModal()}
                 className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
               >
                 ✕
@@ -505,7 +557,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               <button
                 type="button"
                 disabled={isDeleting}
-                onClick={() => setDeletingRow(null)}
+                onClick={() => closeDeleteModal()}
                 className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
               >
                 Hủy bỏ
@@ -548,7 +600,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               <button
                 type="button"
                 disabled={isSavingTag}
-                onClick={() => setEditingRow(null)}
+                onClick={() => closeEditModal()}
                 className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
               >
                 ✕
@@ -671,7 +723,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 <button
                   type="button"
                   disabled={isSavingTag}
-                  onClick={() => setEditingRow(null)}
+                  onClick={() => closeEditModal()}
                   className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
                 >
                   Hủy bỏ

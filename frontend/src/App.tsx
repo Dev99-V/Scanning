@@ -5,9 +5,14 @@
 // - Cả 2 bảng cuộn chuột 100 dòng tự động tải tiếp, tối ưu cho cả Mobile PDA lẫn PC.
 import { useMemo, useState } from 'react';
 import ExportButton from './components/ExportButton';
+import NameGateModal from './components/NameGateModal';
 import PdaScanModal from './components/PdaScanModal';
+import PresenceAvatars from './components/PresenceAvatars';
 import ReconciliationTable from './components/ReconciliationTable';
 import ReferenceDataTable from './components/ReferenceDataTable';
+import { useIdentity } from './hooks/useIdentity';
+import { usePresence } from './hooks/usePresence';
+import { initialForName } from './hooks/presenceHelpers';
 import { useReferenceMap } from './hooks/useReferenceMap';
 import { useScannedData } from './hooks/useScannedData';
 
@@ -15,6 +20,9 @@ export default function App() {
   const { rows, refetch } = useScannedData();
   const { byBatch, updateBatchQty, updateBatchBin, addBatch } = useReferenceMap();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  // Hiện diện realtime: bắt buộc đặt tên → avatar streaming + khóa mềm theo dòng.
+  const { identity, saveName, rename } = useIdentity();
+  const presence = usePresence(identity);
 
   // Thống kê nhanh trạng thái quét (chống trùng lặp id và nhận diện chính xác tag quét trùng nhiều vị trí)
   const stats = useMemo(() => {
@@ -70,9 +78,34 @@ export default function App() {
         </div>
 
         {/* Nút Gọi thẻ Quét Tag */}
-        <button
-          type="button"
-          onClick={() => setIsScanModalOpen(true)}
+        <div className="flex items-center gap-3">
+          {identity && (
+            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
+              <span
+                aria-label={`Bạn đang là ${identity.name}`}
+                title={`Bạn đang là ${identity.name}`}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-black text-white"
+                style={{ backgroundColor: identity.color }}
+              >
+                {initialForName(identity.name)}
+              </span>
+              <div className="leading-tight">
+                <p className="text-xs font-bold text-white">{identity.name}</p>
+                <p className="text-[10px] text-emerald-400">● Online ({presence.onlineCount})</p>
+              </div>
+              <button
+                type="button"
+                onClick={rename}
+                title="Đổi tên hiển thị"
+                className="ml-1 rounded-lg border border-white/10 px-2 py-1 text-[10px] text-slate-400 hover:text-white"
+              >
+                Đổi tên
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsScanModalOpen(true)}
           className="group flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 px-6 py-4 font-cyber text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.02] hover:shadow-cyan-500/40 active:scale-95"
         >
           <span className="text-xl transition-transform group-hover:scale-125">🏷️</span>
@@ -80,7 +113,8 @@ export default function App() {
           <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] tracking-normal">
             Bật Giao Diện Nổi
           </span>
-        </button>
+          </button>
+        </div>
       </header>
 
       {/* Thống kê nhanh */}
@@ -108,7 +142,12 @@ export default function App() {
       </section>
 
       {/* Bảng 1: Danh Sách Đã Quét & Đối Chiếu */}
-      <section aria-label="Đối chiếu" className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-4 sm:p-5 shadow-xl">
+      <section
+        aria-label="Đối chiếu"
+        className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-4 sm:p-5 shadow-xl"
+        onMouseEnter={() => presence.setViewing('table1')}
+        onFocusCapture={() => presence.setViewing('table1')}
+      >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-widest text-slate-200 flex items-center gap-2">
@@ -117,6 +156,9 @@ export default function App() {
             <p className="text-[11px] text-slate-400 mt-0.5">
               So khớp trực tiếp giữa dữ liệu thực tế quét từ PDA và số liệu nguồn từ hệ thống.
             </p>
+            <div className="mt-1">
+              <PresenceAvatars users={presence.viewersOfTable('table1')} tableLabel="Bảng 1" />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <ExportButton rows={rows} systemByBatch={byBatch} />
@@ -126,29 +168,37 @@ export default function App() {
         <ReconciliationTable
           rows={rows}
           systemByBatch={byBatch}
+          presence={presence}
           onRowDeleted={() => void refetch()}
           onRowUpdated={() => void refetch()}
         />
       </section>
 
       {/* Bảng 2: Dữ Liệu Nguồn & Thẻ Import */}
-      <ReferenceDataTable
-        scannedRows={rows}
-        onQtyUpdated={updateBatchQty}
-        onBinUpdated={(batchId, newBin) => {
-          updateBatchBin(batchId, newBin);
-          void refetch();
-        }}
-        onReferenceAdded={(newRow) => {
-          addBatch(newRow.batch_id, {
-            stock_code: newRow.stock_code,
-            qty: newRow.qty,
-            bin: newRow.bin,
-            tag_7055: newRow.tag_7055,
-          });
-          void refetch();
-        }}
-      />
+      <div
+        onMouseEnter={() => presence.setViewing('table2')}
+        onFocusCapture={() => presence.setViewing('table2')}
+      >
+        <ReferenceDataTable
+          scannedRows={rows}
+          presence={presence}
+          presenceHeader={<PresenceAvatars users={presence.viewersOfTable('table2')} tableLabel="Bảng 2" />}
+          onQtyUpdated={updateBatchQty}
+          onBinUpdated={(batchId, newBin) => {
+            updateBatchBin(batchId, newBin);
+            void refetch();
+          }}
+          onReferenceAdded={(newRow) => {
+            addBatch(newRow.batch_id, {
+              stock_code: newRow.stock_code,
+              qty: newRow.qty,
+              bin: newRow.bin,
+              tag_7055: newRow.tag_7055,
+            });
+            void refetch();
+          }}
+        />
+      </div>
 
       {/* Giao diện nổi Quét Tag (Modal) */}
       <PdaScanModal
@@ -159,6 +209,8 @@ export default function App() {
         onScanned={() => void refetch()}
       />
 
+      {/* Cổng đặt tên bắt buộc — avatar streaming realtime */}
+      <NameGateModal open={!identity} onSubmit={saveName} />
 
     </main>
   );

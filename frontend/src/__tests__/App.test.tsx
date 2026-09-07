@@ -46,6 +46,27 @@ vi.mock('../hooks/useReferenceMap', () => ({
     loading: false,
   }),
 }));
+// Presence: cổng tên + realtime avatar — mock để test luồng quét cũ không bị chặn.
+vi.mock('../hooks/useIdentity', () => ({
+  useIdentity: () => ({
+    identity: { sessionId: 'test-session', name: 'Tester', color: 'hsl(200, 75%, 55%)' },
+    saveName: vi.fn(),
+    rename: vi.fn(),
+  }),
+  validateDisplayName: () => null,
+}));
+vi.mock('../hooks/usePresence', () => ({
+  usePresence: () => ({
+    peers: [],
+    onlineCount: 1,
+    setViewing: vi.fn(),
+    setEditing: vi.fn(),
+    clearEditing: vi.fn(),
+    getLock: () => null,
+    viewersOfTable: () => [],
+    editorsOfTable: () => [],
+  }),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();

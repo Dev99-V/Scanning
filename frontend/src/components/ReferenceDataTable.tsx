@@ -3,6 +3,8 @@
 // Lấy toàn bộ dữ liệu từ Supabase qua phân trang range (không bị chặn ở mốc 1000 dòng).
 // Bộ lọc thông minh: tự động dò tìm mọi trường, riêng Kho cần thêm tiền tố 'WH' (vd WH01, WH50).
 import React, { useEffect, useMemo, useState } from 'react';
+import type { UsePresenceApi } from '../hooks/usePresence';
+import { table2RowKey } from '../hooks/presenceHelpers';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
 import ReferenceAddCard from './ReferenceAddCard';
@@ -26,6 +28,10 @@ interface ReferenceDataTableProps {
   onQtyUpdated?: (batchId: string, newQty: number) => void;
   onBinUpdated?: (batchId: string, newBin: string) => void;
   onReferenceAdded?: (newRow: ReferenceLine) => void;
+  /** Presence realtime (khóa mềm theo dòng). Không bắt buộc để test cũ vẫn chạy. */
+  presence?: UsePresenceApi | null;
+  /** Dải avatar streaming do App truyền xuống (đã lọc theo Bảng 2). */
+  presenceHeader?: React.ReactNode;
 }
 
 export default function ReferenceDataTable({
@@ -33,6 +39,8 @@ export default function ReferenceDataTable({
   onQtyUpdated,
   onBinUpdated,
   onReferenceAdded,
+  presence,
+  presenceHeader,
 }: ReferenceDataTableProps = {}) {
   const [rows, setRows] = useState<ReferenceLine[]>([]);
   const [smartFilter, setSmartFilter] = useState('');
@@ -188,10 +196,29 @@ export default function ReferenceDataTable({
   const [isSavingBin, setIsSavingBin] = useState(false);
   const [editBinError, setEditBinError] = useState<string | null>(null);
 
+  // Nhả khóa presence khi unmount để dòng nguồn không kẹt.
+  useEffect(() => () => presence?.clearEditing(), [presence]);
+
   function openEditBinModal(row: ReferenceLine) {
+    const holder = presence?.getLock('table2', table2RowKey(row.batch_id));
+    if (holder) {
+      setEditBinError(`🔒 ${holder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới.`);
+      return;
+    }
+    presence?.setEditing({
+      table: 'table2',
+      key: table2RowKey(row.batch_id),
+      batchId: (row.batch_id || '').trim(),
+      label: 'sửa Bin Bảng 2',
+    });
     setEditingBinRow(row);
     setEditBinInput(row.bin);
     setEditBinError(null);
+  }
+
+  function closeEditBinModal() {
+    setEditingBinRow(null);
+    presence?.clearEditing();
   }
 
   async function handleSaveBin() {
@@ -220,7 +247,7 @@ export default function ReferenceDataTable({
           ),
         );
         onBinUpdated?.(editingBinRow.batch_id, cleanBin);
-        setEditingBinRow(null);
+        closeEditBinModal();
       }
     } catch (e) {
       setEditBinError(`Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
@@ -230,10 +257,26 @@ export default function ReferenceDataTable({
   }
 
   function openEditModal(row: ReferenceLine) {
+    const holder = presence?.getLock('table2', table2RowKey(row.batch_id));
+    if (holder) {
+      setEditError(`🔒 ${holder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới.`);
+      return;
+    }
+    presence?.setEditing({
+      table: 'table2',
+      key: table2RowKey(row.batch_id),
+      batchId: (row.batch_id || '').trim(),
+      label: 'sửa SL Bảng 2',
+    });
     setEditingRow(row);
     setEditQtyInput('');
     setQtyOperation('subtract');
     setEditError(null);
+  }
+
+  function closeEditModal() {
+    setEditingRow(null);
+    presence?.clearEditing();
   }
 
   async function handleSaveQty() {
@@ -272,7 +315,7 @@ export default function ReferenceDataTable({
           ),
         );
         onQtyUpdated?.(editingRow.batch_id, newQ);
-        setEditingRow(null);
+        closeEditModal();
       }
     } catch (e) {
       setEditError(`Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
@@ -463,6 +506,7 @@ export default function ReferenceDataTable({
               <p className="text-[11px] text-slate-400 mt-0.5">
                 Hiển thị đầy đủ thông tin tồn kho gốc: Stock Code, Tag ID (Batch), Kho, Bin, Số lượng và Ngày tạo. Các dòng khớp Bảng 1 được highlight xanh ngọc; các dòng lệch vị trí (Bin) được highlight vàng cam, lệch số lượng được highlight đỏ.
               </p>
+              {presenceHeader && <div className="mt-1">{presenceHeader}</div>}
             </div>
           </div>
 
@@ -583,6 +627,8 @@ export default function ReferenceDataTable({
                     const isMatched = !isDuplicate && isRowMatched(r);
                     const isBinMismatch = !isDuplicate && !isMatched && isRowBinMismatch(r);
                     const isQtyMismatch = !isDuplicate && !isMatched && isRowQtyMismatch(r);
+                    // Khóa mềm realtime: dòng nguồn đang bị người khác sửa thì disable.
+                    const lockHolder = presence?.getLock('table2', table2RowKey(r.batch_id)) ?? null;
 
                     let rowTestId = 'ref-row';
                     if (isDuplicate) {
@@ -683,6 +729,14 @@ export default function ReferenceDataTable({
                                 <span>LỆCH SL</span>
                               </span>
                             )}
+                            {lockHolder && (
+                              <span
+                                title={`${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới`}
+                                className="inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-950/60 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-amber-300 shadow-sm"
+                              >
+                                <span>🔒 {lockHolder.name} đang thao tác</span>
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-3 py-2 text-slate-300">{r.warehouse}</td>
@@ -725,9 +779,10 @@ export default function ReferenceDataTable({
                             <button
                               type="button"
                               onClick={() => openEditBinModal(r)}
-                              title="Chỉnh sửa vị trí (Bin)"
+                              disabled={Boolean(lockHolder)}
+                              title={lockHolder ? `${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới` : 'Chỉnh sửa vị trí (Bin)'}
                               aria-label={`Chỉnh sửa vị trí ${r.batch_id}`}
-                              className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-emerald-500/40 hover:bg-emerald-950/60 hover:text-emerald-300 active:scale-95"
+                              className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-emerald-500/40 hover:bg-emerald-950/60 hover:text-emerald-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
                             >
                               ✏️
                             </button>
@@ -764,9 +819,10 @@ export default function ReferenceDataTable({
                             <button
                               type="button"
                               onClick={() => openEditModal(r)}
-                              title="Chỉnh sửa số lượng"
+                              disabled={Boolean(lockHolder)}
+                              title={lockHolder ? `${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới` : 'Chỉnh sửa số lượng'}
                               aria-label={`Chỉnh sửa số lượng ${r.batch_id}`}
-                              className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                              className="rounded-lg border border-white/10 bg-white/5 p-1 text-slate-400 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
                             >
                               ✏️
                             </button>
@@ -828,7 +884,7 @@ export default function ReferenceDataTable({
               <button
                 type="button"
                 disabled={isSavingQty}
-                onClick={() => setEditingRow(null)}
+                onClick={() => closeEditModal()}
                 className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
               >
                 ✕
@@ -988,7 +1044,7 @@ export default function ReferenceDataTable({
               <button
                 type="button"
                 disabled={isSavingQty}
-                onClick={() => setEditingRow(null)}
+                onClick={() => closeEditModal()}
                 className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
               >
                 Hủy bỏ
@@ -1030,7 +1086,7 @@ export default function ReferenceDataTable({
               <button
                 type="button"
                 disabled={isSavingBin}
-                onClick={() => setEditingBinRow(null)}
+                onClick={() => closeEditBinModal()}
                 className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
               >
                 ✕
@@ -1102,7 +1158,7 @@ export default function ReferenceDataTable({
               <button
                 type="button"
                 disabled={isSavingBin}
-                onClick={() => setEditingBinRow(null)}
+                onClick={() => closeEditBinModal()}
                 className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
               >
                 Hủy bỏ
