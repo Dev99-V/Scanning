@@ -383,3 +383,37 @@
 - **Cách phòng tránh lần sau**:
   - Một thực thể dữ liệu bị xung đột hoặc quét trùng ở nhiều vị trí thực tế KHÔNG BAO GIỜ được xem là "Đã khớp" trong logic đối chiếu, bất kể có 1 vị trí tạm thời trùng khớp.
   - Các thống kê KPI và phân loại trạng thái phải luôn dựa trên tính toàn vẹn của dữ liệu (frequency check) thay vì chỉ phụ thuộc vào một thuộc tính trạng thái có thể bị RPC khác ghi đè.
+
+### [2026-09-07] Khắc phục lỗi giới hạn limit(500) làm mất highlight và thiếu dữ liệu quét (Tag 199900019737 và các tag cũ)
+
+- **Khu vực**: Hook dữ liệu quét `useScannedData.ts`, tra cứu nguồn `useReferenceMap.ts`, bảng đối chiếu `ReconciliationTable.tsx`, modal PDA `PdaScanModal.tsx`.
+- **Triệu chứng**:
+  Dữ liệu Tag `199900019737` (và nhiều Tag khác được in thêm/thao tác từ ngày 5/9) có đầy đủ trong cả `reference_stock` và `scanned_data` với trạng thái trùng khớp 100% (`ok`, cùng mã hàng, cùng vị trí `100401`, cùng số lượng `140`), nhưng trên giao diện:
+  1. Ở Bảng 2 không được highlight trạng thái ("ĐÃ KHỚP"), mà bị xếp nhầm vào "Dữ liệu dư" (unhighlighted).
+  2. Ở Bảng 1 dòng quét biến mất, không xuất hiện.
+  3. Thống kê KPI "Khớp hoàn toàn" và "Tổng đã quét" bị thiếu hụt.
+  4. Khi xuất Excel Bảng 1 bị thiếu mất 48 dòng quét từ ngày 5/9.
+- **Nguyên nhân gốc**:
+  1. Trong `useScannedData.ts`, hàm `fetchData` trước đó đặt cứng `.order('scanned_at', { ascending: false }).limit(500)`. Khi tổng số lượt quét trong hệ thống vượt qua 500 dòng (thực tế ngày hôm nay đã đạt 548 dòng: 266 dòng ngày 5/9 + 282 dòng ngày 7/9), 48 dòng quét cũ nhất bị cắt bỏ âm thầm (silent truncation).
+  2. Tag `199900019737` được quét lúc `03:19:10` ngày 5/9, nằm ở vị trí thứ 516 theo thứ tự thời gian giảm dần, nên bị cắt bỏ hoàn toàn khỏi `rows` truyền lên giao diện.
+  3. Vì `rows` chỉ chứa 500 dòng, `ReferenceDataTable` nhận `scannedRows` bị thiếu, tra cứu `scannedByBatch.get('199900019737')` trả về `undefined`, dẫn tới việc dòng này không được highlight khớp và bị coi là dữ liệu dư.
+  4. Càng quét nhiều tag mới, số dòng cũ bị mất highlight và biến mất khỏi Bảng 1 càng tăng theo hiệu ứng tuyết lở.
+- **Cách sửa**:
+  1. `useScannedData.ts`: Loại bỏ hoàn toàn `.limit(500)`. Thay bằng vòng lặp phân trang động `.range(from, from + step - 1)` (step = 1000) giống như `ReferenceDataTable.tsx` và `useReferenceMap.ts`, đảm bảo tải đầy đủ toàn bộ dữ liệu quét (548/548 dòng hiện tại và không giới hạn trong tương lai).
+  2. `useReferenceMap.ts`: Bổ sung `.trim()` cho tất cả các thao tác lưu và tra cứu `batch_id` (`map.set`, `next.get`, `updateBatchQty`, `updateBatchBin`, `addBatch`).
+  3. `ReconciliationTable.tsx`: Chuẩn hóa `cleanBatch = (r.batch_id || '').trim()` khi tra cứu `systemByBatch` và khi lọc tìm kiếm.
+  4. `PdaScanModal.tsx`: Chuẩn hóa `cleanTag = tag.trim()` khi kiểm tra trùng và tra cứu file nguồn.
+  5. `useScannedData.test.ts`: Bổ sung mock cho `range` và viết unit test kiểm thử việc nạp dữ liệu phân trang vượt mốc 500 dòng (ví dụ 1050 dòng) qua nhiều trang.
+- **Bằng chứng đã hết lỗi**:
+  - Chạy script kiểm chứng đối soát trực tiếp trên Supabase live:
+    + Đã tải đầy đủ 548/548 dòng `scanned_data` và 3590 dòng `reference_stock`.
+    + Tag `199900019737` được tra cứu chính xác, `isRowMatched: true`, không còn bị báo là dữ liệu dư.
+    + Toàn bộ 48/48 dòng bị cắt trước đây đã khớp lại chính xác (`48/48 matched`).
+    + Tổng số dòng khớp Bảng 2 hiển thị đúng 473 dòng, 2 dòng lệch số lượng, 73 dòng ngoài nguồn, 0 dòng trùng quét.
+  - Toàn bộ 13 test files của Vitest (71/71 tests) PASS: `npm test -- --run`.
+  - Cả 3 QC gate scripts liên quan (`qc_phase4.sh`, `qc_phase5.sh`, `qc_phase6.sh`) đều chạy thành công và in `RESULT: PASS`.
+  - `npm run lint` 0 warning 0 error; `npm run build` thành công trong 3.4s.
+- **Cách phòng tránh lần sau**:
+  - Tuyệt đối không hardcode `.limit()` cố định cho các collection dữ liệu nghiệp vụ tăng trưởng theo thời gian như bảng quét `scanned_data`. Luôn dùng cơ chế phân trang `.range()` hoặc streaming để đọc toàn vẹn dữ liệu từ DB.
+  - Luôn `.trim()` các khóa nghiệp vụ dạng chuỗi (như `batch_id`, `bin`) ở các tầng nhận dữ liệu, tránh sai lệch do khoảng trắng vô hình.
+

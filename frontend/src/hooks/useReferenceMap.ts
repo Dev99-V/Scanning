@@ -28,7 +28,8 @@ export function useReferenceMap() {
           .range(from, from + step - 1);
         if (error || !data || data.length === 0) break;
         for (const r of data as ReferenceRow[]) {
-          map.set(r.batch_id, {
+          if (!r?.batch_id) continue;
+          map.set(r.batch_id.trim(), {
             stock_code: r.stock_code,
             qty: r.qty,
             bin: r.bin,
@@ -45,31 +46,34 @@ export function useReferenceMap() {
   }, []);
 
   const updateBatchQty = useCallback((batchId: string, newQty: number) => {
+    const cleanId = (batchId || '').trim();
     setByBatch((prev) => {
       const next = new Map(prev);
-      const cur = next.get(batchId);
+      const cur = next.get(cleanId);
       if (cur) {
-        next.set(batchId, { ...cur, qty: newQty });
+        next.set(cleanId, { ...cur, qty: newQty });
       }
       return next;
     });
   }, []);
 
   const updateBatchBin = useCallback((batchId: string, newBin: string) => {
+    const cleanId = (batchId || '').trim();
     setByBatch((prev) => {
       const next = new Map(prev);
-      const cur = next.get(batchId);
+      const cur = next.get(cleanId);
       if (cur) {
-        next.set(batchId, { ...cur, bin: newBin });
+        next.set(cleanId, { ...cur, bin: newBin });
       }
       return next;
     });
   }, []);
 
   const addBatch = useCallback((batchId: string, item: SystemNumbers) => {
+    const cleanId = (batchId || '').trim();
     setByBatch((prev) => {
       const next = new Map(prev);
-      next.set(batchId, item);
+      next.set(cleanId, item);
       return next;
     });
   }, []);

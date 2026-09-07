@@ -12,26 +12,39 @@ export function useScannedData() {
 
   const fetchData = useCallback(async () => {
     try {
-      const { data, error: err } = await supabase
-        .from('scanned_data')
-        .select('id,batch_id,qty,bin,status,resolution,is_manual,scanned_at,stock_code')
-        .order('scanned_at', { ascending: false })
-        .limit(500);
+      const step = 1000;
+      let from = 0;
+      const all: ScanRow[] = [];
+      while (true) {
+        const q = supabase
+          .from('scanned_data')
+          .select('id,batch_id,qty,bin,status,resolution,is_manual,scanned_at,stock_code')
+          .order('scanned_at', { ascending: false });
 
-      if (err) {
-        setError(err.message);
-      } else {
-        const unique: ScanRow[] = [];
-        const seen = new Set<string>();
-        for (const r of (data ?? []) as ScanRow[]) {
-          if (r?.id && !seen.has(r.id)) {
-            seen.add(r.id);
-            unique.push(r);
-          }
+        const res = await (q.range ? q.range(from, from + step - 1) : (q.limit ? q.limit(step) : q));
+        const data = res?.data;
+        const err = res?.error;
+
+        if (err) {
+          setError(err.message);
+          return;
         }
-        setRows(unique);
-        setError(null);
+        if (!data || (data as unknown[]).length === 0) break;
+        all.push(...(data as ScanRow[]));
+        if ((data as unknown[]).length < step || !q.range) break;
+        from += step;
       }
+
+      const unique: ScanRow[] = [];
+      const seen = new Set<string>();
+      for (const r of all) {
+        if (r?.id && !seen.has(r.id)) {
+          seen.add(r.id);
+          unique.push(r);
+        }
+      }
+      setRows(unique);
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -99,8 +99,10 @@ export default function PdaScanModal({
     setNotice(null);
     setSuccessNotice(null);
 
+    const cleanTag = tag.trim();
+
     // 1. Kiểm tra trùng trong danh sách đã quét
-    const existing = rows.find((r) => r.batch_id === tag);
+    const existing = rows.find((r) => (r.batch_id || '').trim() === cleanTag);
     if (existing) {
       setDuplicateConflict({
         existingId: existing.id,
@@ -112,7 +114,7 @@ export default function PdaScanModal({
     }
 
     // 2. Tra cứu trong file nguồn
-    const refItem = systemByBatch.get(tag);
+    const refItem = systemByBatch.get(cleanTag);
     if (!refItem) {
       setIsNotInRefAlert(true);
       setMatchedStockCode(null);

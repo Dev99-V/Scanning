@@ -52,7 +52,8 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     setEditingRow(r);
     setNewTagId(r.batch_id);
     setEditQty(String(r.qty));
-    const sys = systemByBatch.get(r.batch_id);
+    const cleanBatch = (r.batch_id || '').trim();
+    const sys = systemByBatch.get(cleanBatch);
     setManualStockCode(r.stock_code ?? sys?.stock_code ?? '');
     setEditNotice(null);
   }
@@ -142,9 +143,10 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
 
       if (searchTerm.trim()) {
         const term = searchTerm.trim().toLowerCase();
-        const sys = systemByBatch.get(r.batch_id);
+        const cleanBatch = (r.batch_id || '').trim();
+        const sys = systemByBatch.get(cleanBatch);
         const sc = (r.stock_code ?? sys?.stock_code ?? '').toLowerCase();
-        const tag = r.batch_id.toLowerCase();
+        const tag = cleanBatch.toLowerCase();
         const bin = r.bin.toLowerCase();
         if (!sc.includes(term) && !tag.includes(term) && !bin.includes(term)) {
           return false;
@@ -239,7 +241,8 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
           </thead>
           <tbody className="divide-y divide-white/5">
             {displayedRows.map((r) => {
-              const sys = systemByBatch.get(r.batch_id);
+              const cleanBatch = (r.batch_id || '').trim();
+              const sys = systemByBatch.get(cleanBatch);
               const isQtyDiff = sys && Number(sys.qty) !== Number(r.qty);
               const isBinDiff = sys && sys.bin !== r.bin;
               const stockCode = r.stock_code ?? sys?.stock_code ?? '—';
