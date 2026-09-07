@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
+import type { ScanRow } from '../lib/types';
 
 const { submitScan, resolveDuplicate } = vi.hoisted(() => ({
   submitScan: vi.fn(),
@@ -22,20 +23,22 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-const mockExistingRow = {
+const mockExistingRow: ScanRow = {
   id: 'e1',
   batch_id: 'T1',
   qty: 1,
   bin: 'C4',
   stock_code: 'S1',
-  status: 'ok' as const,
+  status: 'ok',
   resolution: null,
   is_manual: false,
   scanned_at: '2026-09-04T00:00:00Z',
 };
 
+let currentMockRows: ScanRow[] = [mockExistingRow];
+
 vi.mock('../hooks/useScannedData', () => ({
-  useScannedData: () => ({ rows: [mockExistingRow], loading: false, error: null, refetch: vi.fn() }),
+  useScannedData: () => ({ rows: currentMockRows, loading: false, error: null, refetch: vi.fn() }),
 }));
 vi.mock('../hooks/useReferenceMap', () => ({
   useReferenceMap: () => ({
@@ -46,6 +49,7 @@ vi.mock('../hooks/useReferenceMap', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  currentMockRows = [mockExistingRow];
 });
 
 describe('App layout and modal workflow', () => {
@@ -111,5 +115,46 @@ describe('App layout and modal workflow', () => {
         stockCode: 'S1',
       }),
     );
+  });
+
+  it('thống kê KPI chính xác khi có tag bị quét trùng nhiều vị trí (Trùng Tag đếm cả 2 lượt quét)', () => {
+    currentMockRows = [
+      {
+        id: 'dup-1',
+        batch_id: '900002920556',
+        qty: 10,
+        bin: 'BIN_1',
+        stock_code: 'SKU_1',
+        status: 'ok' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-07T00:00:00Z',
+      },
+      {
+        id: 'dup-2',
+        batch_id: '900002920556',
+        qty: 10,
+        bin: 'BIN_2',
+        stock_code: 'SKU_1',
+        status: 'bin_mismatch' as const,
+        resolution: 'appended' as const,
+        is_manual: false,
+        scanned_at: '2026-09-07T00:01:00Z',
+      },
+    ];
+
+    render(<App />);
+
+    // Thẻ Trùng Tag phải hiển thị 2 (thay vì 0 như lỗi trước đây)
+    const kpiSection = screen.getByLabelText('Thống kê');
+    expect(kpiSection).toHaveTextContent('Trùng Tag');
+    // Tổng đã quét = 2
+    expect(kpiSection).toHaveTextContent('2');
+    // Trùng Tag = 2
+    const dupStat = kpiSection.querySelector('.text-rose-300');
+    expect(dupStat).toHaveTextContent('2');
+    // Khớp hoàn toàn = 0 (không được báo khớp giả tạo cho lượt quét trùng)
+    const okStat = kpiSection.querySelector('.text-emerald-300');
+    expect(okStat).toHaveTextContent('0');
   });
 });

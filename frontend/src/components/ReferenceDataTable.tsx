@@ -50,53 +50,71 @@ export default function ReferenceDataTable({
     if (!scannedRows) return map;
     for (const s of scannedRows) {
       if (!s.batch_id) continue;
-      const list = map.get(s.batch_id) || [];
+      const cleanBatch = s.batch_id.trim();
+      const list = map.get(cleanBatch) || [];
       list.push(s);
-      map.set(s.batch_id, list);
+      map.set(cleanBatch, list);
     }
     return map;
   }, [scannedRows]);
 
-  // Kiểm tra xem 1 dòng nguồn có khớp hoàn toàn với dữ liệu quét ở Bảng 1 hay không
-  const isRowMatched = React.useCallback(
+  // Kiểm tra xem 1 dòng nguồn có bị quét trùng (>= 2 lượt quét hoặc status duplicate) hay không
+  const isRowDuplicateScanned = React.useCallback(
     (r: ReferenceLine): boolean => {
-      const scans = scannedByBatch.get(r.batch_id);
+      const cleanBatch = (r.batch_id || '').trim();
+      const scans = scannedByBatch.get(cleanBatch);
       if (!scans || scans.length === 0) return false;
-      const cleanRefBin = (r.bin || '').trim().toLowerCase();
-      return scans.some(
-        (s) =>
-          s.status === 'ok' ||
-          ((s.bin || '').trim().toLowerCase() === cleanRefBin && Number(s.qty) === Number(r.qty)),
-      );
+      return scans.length > 1 || scans.some((s) => s.status === 'duplicate');
     },
     [scannedByBatch],
+  );
+
+  // Kiểm tra xem 1 dòng nguồn có khớp hoàn toàn với dữ liệu quét ở Bảng 1 hay không
+  // BẮT BUỘC: Nếu tag bị quét trùng (>= 2 lần hoặc status duplicate) thì KHÔNG THỂ coi là đã khớp!
+  const isRowMatched = React.useCallback(
+    (r: ReferenceLine): boolean => {
+      if (isRowDuplicateScanned(r)) return false;
+      const cleanBatch = (r.batch_id || '').trim();
+      const scans = scannedByBatch.get(cleanBatch);
+      if (!scans || scans.length !== 1) return false;
+      const s = scans[0];
+      if (s.status === 'duplicate') return false;
+      const cleanRefBin = (r.bin || '').trim().toLowerCase();
+      return (
+        s.status === 'ok' ||
+        ((s.bin || '').trim().toLowerCase() === cleanRefBin && Number(s.qty) === Number(r.qty))
+      );
+    },
+    [scannedByBatch, isRowDuplicateScanned],
   );
 
   // Kiểm tra xem 1 dòng nguồn có lượt quét ở Bảng 1 nhưng chưa khớp vị trí (bin) hay không
   const isRowBinMismatch = React.useCallback(
     (r: ReferenceLine): boolean => {
-      if (isRowMatched(r)) return false;
-      const scans = scannedByBatch.get(r.batch_id);
+      if (isRowMatched(r) || isRowDuplicateScanned(r)) return false;
+      const cleanBatch = (r.batch_id || '').trim();
+      const scans = scannedByBatch.get(cleanBatch);
       if (!scans || scans.length === 0) return false;
       const cleanRefBin = (r.bin || '').trim().toLowerCase();
       return scans.some(
         (s) => s.status === 'bin_mismatch' || (s.bin || '').trim().toLowerCase() !== cleanRefBin,
       );
     },
-    [scannedByBatch, isRowMatched],
+    [scannedByBatch, isRowMatched, isRowDuplicateScanned],
   );
 
   // Kiểm tra xem 1 dòng nguồn có lượt quét ở Bảng 1 nhưng chưa khớp số lượng hay không
   const isRowQtyMismatch = React.useCallback(
     (r: ReferenceLine): boolean => {
-      if (isRowMatched(r)) return false;
-      const scans = scannedByBatch.get(r.batch_id);
+      if (isRowMatched(r) || isRowDuplicateScanned(r)) return false;
+      const cleanBatch = (r.batch_id || '').trim();
+      const scans = scannedByBatch.get(cleanBatch);
       if (!scans || scans.length === 0) return false;
       return scans.some(
         (s) => s.status === 'qty_mismatch' || Number(s.qty) !== Number(r.qty),
       );
     },
-    [scannedByBatch, isRowMatched],
+    [scannedByBatch, isRowMatched, isRowDuplicateScanned],
   );
 
   // Đếm tổng số dòng nguồn đã khớp với Bảng 1
@@ -107,6 +125,15 @@ export default function ReferenceDataTable({
     }
     return count;
   }, [rows, isRowMatched]);
+
+  // Đếm tổng số dòng nguồn bị quét trùng
+  const duplicateCount = useMemo(() => {
+    let count = 0;
+    for (const r of rows) {
+      if (isRowDuplicateScanned(r)) count++;
+    }
+    return count;
+  }, [rows, isRowDuplicateScanned]);
 
   // Đếm số dòng chưa khớp vị trí (bin)
   const binMismatchCount = useMemo(() => {
@@ -126,12 +153,12 @@ export default function ReferenceDataTable({
     return count;
   }, [rows, isRowQtyMismatch]);
 
-  // Kiểm tra dòng không được highlight (dữ liệu dư so với thực tế: không khớp, không lệch bin, không lệch sl)
+  // Kiểm tra dòng không được highlight (dữ liệu dư so với thực tế: không khớp, không lệch bin, không lệch sl, không trùng quét)
   const isRowUnhighlighted = React.useCallback(
     (r: ReferenceLine): boolean => {
-      return !isRowMatched(r) && !isRowBinMismatch(r) && !isRowQtyMismatch(r);
+      return !isRowMatched(r) && !isRowBinMismatch(r) && !isRowQtyMismatch(r) && !isRowDuplicateScanned(r);
     },
-    [isRowMatched, isRowBinMismatch, isRowQtyMismatch],
+    [isRowMatched, isRowBinMismatch, isRowQtyMismatch, isRowDuplicateScanned],
   );
 
   // Đếm số dòng dữ liệu dư (không được highlight)
@@ -299,9 +326,9 @@ export default function ReferenceDataTable({
       list = list.filter((r) => isRowMatched(r));
     }
 
-    // Lọc dòng dữ liệu dư (không được highlight: không khớp, không lệch bin, không lệch sl)
+    // Lọc dòng dữ liệu dư (không được highlight: không khớp, không lệch bin, không lệch sl, không trùng quét)
     if (excessOnlyFilter) {
-      list = list.filter((r) => !isRowMatched(r) && !isRowBinMismatch(r) && !isRowQtyMismatch(r));
+      list = list.filter((r) => isRowUnhighlighted(r));
     }
 
     // Ô thứ 2: Dùng để tìm WH (Kho)
@@ -335,12 +362,14 @@ export default function ReferenceDataTable({
       const isSearchingBinMismatch = term === 'lệch bin' || term === 'lech bin' || term === 'lệch vị trí';
       const isSearchingQtyMismatch = term === 'lệch sl' || term === 'lech sl' || term === 'lệch số lượng';
       const isSearchingAnyMismatch = term === 'lệch' || term === 'lech' || term === 'sai lệch';
+      const isSearchingDuplicate = term === 'trùng' || term === 'trung' || term === 'trùng tag' || term === 'trùng quét' || term === 'trung quet' || term === 'duplicate';
 
       list = list.filter((r) => {
         if (isSearchingMatched && isRowMatched(r)) return true;
         if (isSearchingBinMismatch && isRowBinMismatch(r)) return true;
         if (isSearchingQtyMismatch && isRowQtyMismatch(r)) return true;
         if (isSearchingAnyMismatch && (isRowBinMismatch(r) || isRowQtyMismatch(r))) return true;
+        if (isSearchingDuplicate && isRowDuplicateScanned(r)) return true;
         return (
           r.stock_code.toLowerCase().includes(term) ||
           r.batch_id.toLowerCase().includes(term)
@@ -349,7 +378,7 @@ export default function ReferenceDataTable({
     }
 
     return list;
-  }, [rows, smartFilter, warehouse, bin, matchedOnlyFilter, excessOnlyFilter, isRowMatched, isRowBinMismatch, isRowQtyMismatch]);
+  }, [rows, smartFilter, warehouse, bin, matchedOnlyFilter, excessOnlyFilter, isRowMatched, isRowBinMismatch, isRowQtyMismatch, isRowDuplicateScanned, isRowUnhighlighted]);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
     const target = e.currentTarget;
@@ -401,6 +430,15 @@ export default function ReferenceDataTable({
                   >
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                     ĐÃ KHỚP BẢNG 1: {matchedCount.toLocaleString()} DÒNG
+                  </span>
+                )}
+                {duplicateCount > 0 && (
+                  <span
+                    data-testid="ref-duplicate-badge"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-purple-500/20 px-2.5 py-0.5 text-[10px] font-bold text-purple-300 shadow-sm"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                    TRÙNG QUÉT: {duplicateCount.toLocaleString()} DÒNG
                   </span>
                 )}
                 {binMismatchCount > 0 && (
@@ -539,12 +577,17 @@ export default function ReferenceDataTable({
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {displayedRows.map((r, i) => {
-                    const isMatched = isRowMatched(r);
-                    const isBinMismatch = !isMatched && isRowBinMismatch(r);
-                    const isQtyMismatch = !isMatched && isRowQtyMismatch(r);
+                    const cleanBatch = (r.batch_id || '').trim();
+                    const scans = scannedByBatch.get(cleanBatch);
+                    const isDuplicate = isRowDuplicateScanned(r);
+                    const isMatched = !isDuplicate && isRowMatched(r);
+                    const isBinMismatch = !isDuplicate && !isMatched && isRowBinMismatch(r);
+                    const isQtyMismatch = !isDuplicate && !isMatched && isRowQtyMismatch(r);
 
                     let rowTestId = 'ref-row';
-                    if (isMatched) {
+                    if (isDuplicate) {
+                      rowTestId = 'ref-row-duplicate';
+                    } else if (isMatched) {
                       rowTestId = 'ref-row-matched';
                     } else if (isBinMismatch && isQtyMismatch) {
                       rowTestId = 'ref-row-mismatch-both';
@@ -554,7 +597,9 @@ export default function ReferenceDataTable({
                       rowTestId = 'ref-row-mismatch-qty';
                     }
 
-                    const rowBgClass = isMatched
+                    const rowBgClass = isDuplicate
+                      ? 'bg-purple-950/40 hover:bg-purple-900/50 border-l-4 border-l-purple-500 text-purple-100 shadow-[inset_0_0_12px_rgba(168,85,247,0.15)]'
+                      : isMatched
                       ? 'bg-emerald-950/40 hover:bg-emerald-900/50 border-l-4 border-l-emerald-400 text-emerald-100 shadow-[inset_0_0_12px_rgba(16,185,129,0.12)]'
                       : isBinMismatch && isQtyMismatch
                       ? 'bg-gradient-to-r from-rose-950/35 via-slate-900/50 to-amber-950/35 hover:bg-rose-900/30 border-l-4 border-l-rose-500 text-slate-100 shadow-[inset_0_0_12px_rgba(244,63,94,0.12)]'
@@ -575,7 +620,9 @@ export default function ReferenceDataTable({
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span
                               className={
-                                isMatched
+                                isDuplicate
+                                  ? 'text-purple-300 font-extrabold'
+                                  : isMatched
                                   ? 'text-emerald-300 font-extrabold'
                                   : isQtyMismatch && !isBinMismatch
                                   ? 'text-rose-300 font-extrabold'
@@ -595,6 +642,16 @@ export default function ReferenceDataTable({
                                 className="inline-flex items-center gap-1 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-purple-300 shadow-sm"
                               >
                                 <span>🏷️ 7055</span>
+                              </span>
+                            )}
+                            {isDuplicate && (
+                              <span
+                                data-testid="ref-badge-duplicate"
+                                title={`Tag bị quét trùng ${scans?.length || 2} lần tại các vị trí khác nhau trong Bảng 1`}
+                                className="inline-flex items-center gap-1 rounded-full border border-purple-500/50 bg-purple-500/25 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-purple-300 shadow-sm"
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                                <span>TRÙNG QUÉT ({scans?.length || 2})</span>
                               </span>
                             )}
                             {isMatched && (
@@ -633,7 +690,22 @@ export default function ReferenceDataTable({
                         <td className="px-3 py-2 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <div className="text-right">
-                              {isBinMismatch ? (
+                              {isDuplicate ? (
+                                <div>
+                                  <span
+                                    data-testid="ref-cell-bin-duplicate"
+                                    title={`Quét trùng ở các vị trí: ${scans?.map((s) => s.bin).filter(Boolean).join(', ')}`}
+                                    className="inline-block rounded border border-purple-500/60 bg-purple-950/70 px-2 py-0.5 font-bold text-purple-300 shadow-sm"
+                                  >
+                                    {r.bin}
+                                  </span>
+                                  {scans && scans.length > 0 && (
+                                    <span className="block text-[10px] font-medium text-purple-400">
+                                      (quét: {scans.map((s) => s.bin).filter(Boolean).join(', ')})
+                                    </span>
+                                  )}
+                                </div>
+                              ) : isBinMismatch ? (
                                 <span
                                   data-testid="ref-cell-bin-mismatch"
                                   title="Vị trí chưa khớp với lượt quét ở Bảng 1"

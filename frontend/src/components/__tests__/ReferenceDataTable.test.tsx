@@ -486,5 +486,58 @@ describe('ReferenceDataTable', () => {
       });
     });
   });
+
+  it('cảnh báo TRÙNG QUÉT khi tag bị quét >= 2 lần ở các vị trí khác nhau, không báo khớp giả tạo kể cả khi trùng khớp bin với 1 lượt quét', async () => {
+    const mockScannedRows = [
+      {
+        id: 's1',
+        batch_id: 'TAG001',
+        qty: 1000,
+        bin: '200202', // trùng bin nguồn
+        stock_code: '3400010001',
+        status: 'ok' as const,
+        resolution: null,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:00:00Z',
+      },
+      {
+        id: 's2',
+        batch_id: 'TAG001',
+        qty: 1000,
+        bin: '999999', // quét thêm ở vị trí khác
+        stock_code: '3400010001',
+        status: 'duplicate' as const,
+        resolution: 'appended' as const,
+        is_manual: false,
+        scanned_at: '2026-09-05T00:01:00Z',
+      },
+    ];
+
+    render(<ReferenceDataTable scannedRows={mockScannedRows} />);
+    await screen.findByText('3400010001');
+
+    // TAG001 bị quét trùng: KHÔNG được có testid ref-row-matched hay badge ĐÃ KHỚP
+    expect(screen.queryByTestId('ref-row-matched')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ref-matched-badge')).not.toBeInTheDocument();
+
+    // Dòng TAG001 phải có testid ref-row-duplicate
+    const dupRow = screen.getByTestId('ref-row-duplicate');
+    expect(dupRow).toBeInTheDocument();
+    expect(dupRow).toHaveTextContent('TAG001');
+
+    // Có badge TRÙNG QUÉT (2)
+    const dupBadge = screen.getByTestId('ref-badge-duplicate');
+    expect(dupBadge).toBeInTheDocument();
+    expect(dupBadge).toHaveTextContent(/TRÙNG QUÉT/i);
+
+    // Cột vị trí hiển thị ô bin duplicate kèm các vị trí đã quét
+    const binDupCell = screen.getByTestId('ref-cell-bin-duplicate');
+    expect(binDupCell).toBeInTheDocument();
+    expect(binDupCell).toHaveTextContent('200202');
+    expect(screen.getByText(/quét: 200202, 999999/i)).toBeInTheDocument();
+
+    // Header badge TRÙNG QUÉT: 1 DÒNG
+    expect(screen.getByTestId('ref-duplicate-badge')).toHaveTextContent(/TRÙNG QUÉT: 1 DÒNG/i);
+  });
 });
 

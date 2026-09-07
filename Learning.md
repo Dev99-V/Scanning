@@ -351,3 +351,35 @@
   - Cập nhật và bổ sung unit test trong `ReferenceDataTable.test.tsx` kiểm thử tính năng tự động trừ số lượng và chặn trừ quá số lượng cũ.
   - Toàn bộ 12 test files của Vitest với 57/57 tests PASS.
   - `oxlint` 0 warnings 0 errors; `tsc -b && vite build` thành công.
+
+### [2026-09-07] Khắc phục lỗi hiển thị trùng Tag KPI và cảnh báo trùng quét nhiều vị trí ở Bảng 2
+
+- **Khu vực**: Database Migration (`migrations/20260907044500_fix_duplicate_scan_status_and_kpi.sql`), RPCs (`update_reference_bin`, `update_reference_qty`, `add_reference_stock`), Frontend Dashboard KPI ([App.tsx](file:///workspaces/Scaning/frontend/src/App.tsx)), Frontend Bảng 2 ([ReferenceDataTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReferenceDataTable.tsx)), Frontend Bảng 1 ([ReconciliationTable.tsx](file:///workspaces/Scaning/frontend/src/components/ReconciliationTable.tsx)), [exportExcel.ts](file:///workspaces/Scaning/frontend/src/lib/exportExcel.ts).
+- **Triệu chứng**:
+  Trong database có Tag ID (ví dụ `900002920556`) xuất hiện 2 lần ở `scanned_data` (quét ở 2 vị trí khác nhau), nhưng trên giao diện:
+  1. Thẻ KPI "Trùng Tag" hiển thị 0.
+  2. Ở Bảng 2, khi người dùng đổi vị trí Bin trùng với 1 trong 2 vị trí đã quét, hệ thống luôn báo "ĐÃ KHỚP" cho cả 2 vị trí khác nhau này.
+- **Nguyên nhân gốc**:
+  1. Khi người dùng thay đổi vị trí ở Bảng 2, RPC `update_reference_bin` trước đó đã cập nhật dòng `scanned_data` có bin trùng thành `status = 'ok'` và dòng còn lại thành `'bin_mismatch'`. Vì vậy không còn dòng nào mang `status = 'duplicate'`.
+  2. `App.tsx` chỉ đếm `r.status === 'duplicate'`, nên thẻ KPI báo 0.
+  3. `ReferenceDataTable.tsx` dùng `scans.some(...)` để kiểm tra `isRowMatched`. Khi Tag có 2 lượt quét ở 2 Bin khác nhau: đổi sang Bin nào thì `scans.some(...)` cũng tìm thấy 1 lượt quét ở Bin đó và báo "ĐÃ KHỚP" giả tạo, che giấu hoàn toàn mâu thuẫn vị trí quét trùng.
+- **Cách sửa**:
+  1. Database migration `20260907044500_fix_duplicate_scan_status_and_kpi.sql`:
+     - Chuẩn hóa toàn bộ các dòng quét có `batch_id` xuất hiện $\ge 2$ lần trong `scanned_data` thành `status = 'duplicate'`.
+     - Cập nhật các RPC `update_reference_bin`, `update_reference_qty`, `add_reference_stock`: khi Tag ID có $\ge 2$ lượt quét trong `scanned_data`, **BẮT BUỘC giữ nguyên trạng thái `duplicate`**, tuyệt đối không tự ý chuyển thành `'ok'` hay `'bin_mismatch'`.
+  2. `App.tsx`: Thống kê KPI tính tần suất `batchCounts` theo `batch_id`. Bất kỳ Tag ID nào xuất hiện $\ge 2$ lần trong danh sách quét hoặc mang `status = 'duplicate'` đều được tính chính xác vào KPI "Trùng Tag", không bị tính vào "Khớp hoàn toàn" hay "Sai lệch".
+  3. `ReferenceDataTable.tsx`:
+     - Bổ sung `isRowDuplicateScanned`: nhận diện Tag quét trùng ($\ge 2$ lượt quét hoặc status duplicate).
+     - Ràng buộc `isRowMatched(r)`: trả về `false` nếu `isRowDuplicateScanned(r)`. Một Tag ID đã bị quét trùng thì KHÔNG THỂ coi là đã khớp, ngăn chặn triệt để hiện tượng báo khớp giả tạo khi đổi vị trí.
+     - Phân định rõ ràng: Tag bị quét trùng được highlight màu tím neon `ref-row-duplicate`, gắn huy hiệu `TRÙNG QUÉT (X)`, hiển thị thông tin các vị trí đã quét `(quét: BIN_1, BIN_2)` ở ô Vị trí, và hiển thị huy hiệu thống kê `TRÙNG QUÉT: X DÒNG` trên header Bảng 2.
+  4. `ReconciliationTable.tsx`: Nhận diện các lượt quét trùng, gắn class `duplicate-alert`, hiển thị trạng thái `Trùng Tag`, ghi chú cảnh báo chi tiết `Trùng Tag ID (Quét X lần ở các vị trí khác nhau)` với màu đỏ nổi bật.
+  5. `exportExcel.ts`: Đồng bộ ghi chú và trạng thái `duplicate` khi xuất file Excel.
+- **Bằng chứng đã hết lỗi**:
+  - Bổ sung unit test trong `App.test.tsx`: kiểm tra thẻ KPI thống kê chính xác 2 lượt quét trùng và 0 khớp hoàn toàn.
+  - Bổ sung unit test trong `ReferenceDataTable.test.tsx`: kiểm tra cảnh báo TRÙNG QUÉT khi tag bị quét 2 lần ở các vị trí khác nhau, không báo khớp giả tạo kể cả khi trùng vị trí với 1 lượt quét.
+  - Bổ sung unit test trong `ReconciliationTable.test.tsx`: kiểm tra `duplicate-alert` và ghi chú quét X lần.
+  - Toàn bộ 13 test files (70/70 tests) của Vitest PASS.
+  - `oxlint` 0 warnings 0 errors; `tsc -b && vite build` hoàn thành không lỗi.
+- **Cách phòng tránh lần sau**:
+  - Một thực thể dữ liệu bị xung đột hoặc quét trùng ở nhiều vị trí thực tế KHÔNG BAO GIỜ được xem là "Đã khớp" trong logic đối chiếu, bất kể có 1 vị trí tạm thời trùng khớp.
+  - Các thống kê KPI và phân loại trạng thái phải luôn dựa trên tính toàn vẹn của dữ liệu (frequency check) thay vì chỉ phụ thuộc vào một thuộc tính trạng thái có thể bị RPC khác ghi đè.

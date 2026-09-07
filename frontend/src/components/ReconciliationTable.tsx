@@ -111,6 +111,17 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     }
   }
 
+  // Đếm tần suất xuất hiện của từng Tag ID để nhận diện tag quét trùng nhiều vị trí
+  const batchCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      if (!r?.batch_id) continue;
+      const b = r.batch_id.trim();
+      counts.set(b, (counts.get(b) || 0) + 1);
+    }
+    return counts;
+  }, [rows]);
+
   // Lọc theo trạng thái và từ khóa tìm kiếm (kèm chống duplicate key)
   const filteredRows = React.useMemo(() => {
     const seenIds = new Set<string>();
@@ -119,7 +130,16 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
         if (seenIds.has(r.id)) return false;
         seenIds.add(r.id);
       }
-      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+      const b = r.batch_id?.trim() ?? '';
+      const isDuplicate = (batchCounts.get(b) ?? 0) > 1 || r.status === 'duplicate';
+
+      if (statusFilter === 'duplicate') {
+        if (!isDuplicate) return false;
+      } else if (statusFilter !== 'all') {
+        if (isDuplicate) return false;
+        if (r.status !== statusFilter) return false;
+      }
+
       if (searchTerm.trim()) {
         const term = searchTerm.trim().toLowerCase();
         const sys = systemByBatch.get(r.batch_id);
@@ -132,7 +152,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
       }
       return true;
     });
-  }, [rows, statusFilter, searchTerm, systemByBatch]);
+  }, [rows, statusFilter, searchTerm, systemByBatch, batchCounts]);
 
   if (rows.length === 0) {
     return (
@@ -223,10 +243,16 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               const isQtyDiff = sys && Number(sys.qty) !== Number(r.qty);
               const isBinDiff = sys && sys.bin !== r.bin;
               const stockCode = r.stock_code ?? sys?.stock_code ?? '—';
+              const scanCount = batchCounts.get(r.batch_id?.trim() ?? '') ?? 1;
+              const isDuplicate = scanCount > 1 || r.status === 'duplicate';
 
               // Ghi chú chi tiết cho dòng
               let note = '';
-              if (r.status === 'ok') {
+              if (isDuplicate) {
+                note = scanCount > 1
+                  ? `Trùng Tag ID (Quét ${scanCount} lần ở các vị trí khác nhau)`
+                  : `Trùng Tag ID (${r.resolution === 'appended' ? 'Đã ghi thêm' : 'Đã đổi vị trí'})`;
+              } else if (r.status === 'ok') {
                 note = 'Khớp hoàn toàn';
               } else if (r.status === 'qty_mismatch') {
                 note = `Lệch số lượng (Quét: ${r.qty} / Nguồn: ${sys?.qty ?? '—'})`;
@@ -234,8 +260,6 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 note = `Lệch vị trí (Quét: ${r.bin} / Nguồn: ${sys?.bin ?? '—'})`;
               } else if (r.status === 'not_in_reference') {
                 note = 'Tag ID không có trong file nguồn';
-              } else if (r.status === 'duplicate') {
-                note = `Trùng Tag ID (${r.resolution === 'appended' ? 'Đã ghi thêm' : 'Đã đổi vị trí'})`;
               }
 
               return (
@@ -243,7 +267,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                   key={r.id}
                   data-testid={`recon-row-${r.id}`}
                   className={`hover:bg-white/5 transition-colors ${
-                    r.status === 'duplicate' ? 'duplicate-alert' : ''
+                    isDuplicate ? 'duplicate-alert bg-purple-950/20' : ''
                   }`}
                 >
                   {/* Stock Code */}
@@ -335,20 +359,20 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                   <td className="px-3 py-2.5 text-center">
                     <span
                       className={`inline-block rounded-full border px-2.5 py-0.5 text-[10px] font-bold shadow-sm ${
-                        STATUS_CLASS[r.status]
+                        isDuplicate ? STATUS_CLASS.duplicate : STATUS_CLASS[r.status]
                       }`}
                     >
-                      {STATUS_LABEL[r.status]}
+                      {isDuplicate ? STATUS_LABEL.duplicate : STATUS_LABEL[r.status]}
                       {r.resolution ? ` · ${r.resolution === 'appended' ? 'ghi thêm' : 'đổi vị trí'}` : ''}
                     </span>
                   </td>
 
-                  {/* Ghi chú cảnh báo (màu đỏ nếu chênh lệch) */}
+                  {/* Ghi chú cảnh báo (màu đỏ nếu chênh lệch hoặc trùng quét) */}
                   <td className="px-3 py-2.5 text-left text-[11px]">
-                    {r.status === 'ok' ? (
-                      <span className="text-emerald-400 font-semibold">{note}</span>
-                    ) : isQtyDiff || isBinDiff || r.status === 'qty_mismatch' || r.status === 'bin_mismatch' ? (
+                    {isDuplicate || isQtyDiff || isBinDiff || r.status === 'qty_mismatch' || r.status === 'bin_mismatch' ? (
                       <span className="text-rose-400 font-bold">{note}</span>
+                    ) : r.status === 'ok' ? (
+                      <span className="text-emerald-400 font-semibold">{note}</span>
                     ) : (
                       <span className="text-amber-300/90 font-medium">{note}</span>
                     )}

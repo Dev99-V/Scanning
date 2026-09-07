@@ -16,22 +16,39 @@ export default function App() {
   const { byBatch, updateBatchQty, updateBatchBin, addBatch } = useReferenceMap();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
 
-  // Thống kê nhanh trạng thái quét (chống trùng lặp id)
+  // Thống kê nhanh trạng thái quét (chống trùng lặp id và nhận diện chính xác tag quét trùng nhiều vị trí)
   const stats = useMemo(() => {
     let ok = 0;
     let mismatch = 0;
     let notInRef = 0;
     let duplicate = 0;
     const seenIds = new Set<string>();
+    const batchCounts = new Map<string, number>();
+
+    // Đếm tần suất xuất hiện của từng Tag ID trong danh sách quét
     for (const r of rows) {
-      if (r?.id) {
+      if (!r?.batch_id) continue;
+      const b = r.batch_id.trim();
+      batchCounts.set(b, (batchCounts.get(b) || 0) + 1);
+    }
+
+    for (const r of rows) {
+      if (!r) continue;
+      if (r.id) {
         if (seenIds.has(r.id)) continue;
         seenIds.add(r.id);
       }
-      if (r.status === 'ok') ok++;
-      else if (r.status === 'qty_mismatch' || r.status === 'bin_mismatch') mismatch++;
-      else if (r.status === 'not_in_reference') notInRef++;
-      else if (r.status === 'duplicate') duplicate++;
+      const b = r.batch_id?.trim();
+      const isDuplicate = (b && (batchCounts.get(b) || 0) > 1) || r.status === 'duplicate';
+      if (isDuplicate) {
+        duplicate++;
+      } else if (r.status === 'ok') {
+        ok++;
+      } else if (r.status === 'qty_mismatch' || r.status === 'bin_mismatch') {
+        mismatch++;
+      } else if (r.status === 'not_in_reference') {
+        notInRef++;
+      }
     }
     return { ok, mismatch, notInRef, duplicate, total: seenIds.size || rows.length };
   }, [rows]);

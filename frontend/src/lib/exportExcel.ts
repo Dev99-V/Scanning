@@ -24,15 +24,29 @@ function textCell(v: string | number): { v: string; t: 's'; z: '@' } {
 export function buildReconWorkbook(rows: ScanRow[], systemByBatch: Map<string, SystemNumbers>): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
   const data: unknown[][] = [EXPORT_HEADER];
+  const batchCounts = new Map<string, number>();
+  for (const r of rows) {
+    if (!r?.batch_id) continue;
+    const b = r.batch_id.trim();
+    batchCounts.set(b, (batchCounts.get(b) || 0) + 1);
+  }
+
   for (const r of rows) {
     const sys = systemByBatch.get(r.batch_id);
     const stockCode = r.stock_code ?? sys?.stock_code ?? '';
+    const scanCount = batchCounts.get(r.batch_id?.trim() ?? '') ?? 1;
+    const isDuplicate = scanCount > 1 || r.status === 'duplicate';
     let note = '';
-    if (r.status === 'ok') note = 'Khớp hoàn toàn';
+    if (isDuplicate) {
+      note = scanCount > 1
+        ? `Trùng Tag ID (Quét ${scanCount} lần ở các vị trí khác nhau)`
+        : `Trùng Tag ID (${r.resolution === 'appended' ? 'Đã ghi thêm' : 'Đã đổi vị trí'})`;
+    } else if (r.status === 'ok') note = 'Khớp hoàn toàn';
     else if (r.status === 'qty_mismatch') note = `Lệch số lượng (Quét: ${r.qty}, HT: ${sys?.qty ?? '—'})`;
     else if (r.status === 'bin_mismatch') note = `Lệch vị trí (Quét: ${r.bin}, HT: ${sys?.bin ?? '—'})`;
     else if (r.status === 'not_in_reference') note = 'Mã không tồn tại trong nguồn';
-    else if (r.status === 'duplicate') note = `Trùng Tag ID (${r.resolution === 'appended' ? 'Đã ghi thêm' : 'Đã đổi vị trí'})`;
+
+    const reportedStatus = isDuplicate ? 'duplicate' : r.status;
 
     data.push([
       textCell(stockCode),
@@ -41,7 +55,7 @@ export function buildReconWorkbook(rows: ScanRow[], systemByBatch: Map<string, S
       sys ? textCell(sys.qty) : '',
       textCell(r.bin),
       sys ? textCell(sys.bin) : '',
-      r.status,
+      reportedStatus,
       note,
     ]);
   }

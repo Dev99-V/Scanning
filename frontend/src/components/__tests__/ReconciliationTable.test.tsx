@@ -231,5 +231,26 @@ describe('ReconciliationTable', () => {
     expect(badge).toBeInTheDocument();
     expect(badge).toHaveTextContent('7055');
   });
+
+  it('nhận diện quét trùng nhiều vị trí: hiển thị duplicate-alert và ghi chú quét X lần', () => {
+    const rows = [
+      row({ id: 'r-dup-1', batch_id: 'TAG_DUP_01', qty: 10, bin: 'BIN_A', status: 'ok' }),
+      row({ id: 'r-dup-2', batch_id: 'TAG_DUP_01', qty: 10, bin: 'BIN_B', status: 'bin_mismatch' }),
+    ];
+
+    render(<ReconciliationTable rows={rows} systemByBatch={new Map([['TAG_DUP_01', { qty: 10, bin: 'BIN_A' }]])} />);
+
+    const row1 = screen.getByTestId('recon-row-r-dup-1');
+    const row2 = screen.getByTestId('recon-row-r-dup-2');
+
+    expect(row1).toHaveClass('duplicate-alert');
+    expect(row2).toHaveClass('duplicate-alert');
+
+    expect(row1).toHaveTextContent(/Trùng Tag/i);
+    expect(row2).toHaveTextContent(/Trùng Tag/i);
+
+    expect(row1).toHaveTextContent(/Quét 2 lần ở các vị trí khác nhau/i);
+    expect(row2).toHaveTextContent(/Quét 2 lần ở các vị trí khác nhau/i);
+  });
 });
 
