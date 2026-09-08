@@ -46,8 +46,7 @@ export default function NameGateModal({ open, onSubmit }: NameGateModalProps) {
             Ai đang kiểm kê?
           </h2>
           <p className="text-xs text-slate-400">
-            Nhập tên để tạo avatar realtime. Người khác sẽ thấy bạn đang xem / sửa bảng nào, dòng
-            nào — giống co-editing trong Excel.
+            Nhập tên để tạo Streaming.
           </p>
         </div>
         <label htmlFor="presence-name" className="mt-4 block text-left text-[11px] font-bold uppercase tracking-widest text-slate-300">
@@ -61,7 +60,7 @@ export default function NameGateModal({ open, onSubmit }: NameGateModalProps) {
             setName(e.target.value);
             setError(null);
           }}
-          placeholder="VD: Anh A"
+          placeholder="VD: Name?"
           autoFocus
           maxLength={20}
           className="mt-1 w-full rounded-xl border border-white/15 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-600 focus:border-cyan-400"
@@ -78,7 +77,7 @@ export default function NameGateModal({ open, onSubmit }: NameGateModalProps) {
           Vào hệ thống →
         </button>
         <p className="mt-2 text-center text-[10px] text-slate-500">
-          2–3 người cùng mở web sẽ thấy avatar của nhau theo thời gian thực.
+          User streaming realtime.
         </p>
       </form>
     </div>

@@ -70,7 +70,7 @@ export default function Reference7055Card({ rows7055, bare }: Reference7055CardP
           </div>
 
           <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-            Danh sách các Tag ID được in thêm khi tích chọn <strong>7055</strong> lúc thêm dữ liệu nguồn. Dữ liệu được lưu trữ chuyên biệt, có thể xem danh sách và xuất file Excel độc lập.
+            Danh sách các Tag ID được in thêm từ <strong>7055</strong> theo dõi riêng biệt danh sách 7055.
           </p>
         </div>
 
@@ -82,7 +82,7 @@ export default function Reference7055Card({ rows7055, bare }: Reference7055CardP
             className="flex items-center gap-2 rounded-xl bg-purple-600/80 hover:bg-purple-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-md shadow-purple-600/20 hover:scale-[1.02] active:scale-95 transition"
           >
             <span>📋</span>
-            <span>Mở Bảng Tag In Thêm ({rows7055.length})</span>
+            <span>Mở Bảng 7055 ({rows7055.length})</span>
           </button>
 
           <button

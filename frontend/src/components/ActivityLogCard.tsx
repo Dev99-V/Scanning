@@ -54,7 +54,7 @@ export default function ActivityLogCard() {
             <span>🧾</span> Nhật Ký Hoạt Động ({entries.length.toLocaleString()} dòng gần nhất)
           </h3>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Ai quét PDA, thêm mã nguồn, sửa SL/Bin hay xóa lượt quét — cập nhật trực tiếp cho mọi người.
+            Cập nhật trực tiếp hoạt động của hệ thống.
           </p>
         </div>
         <div className="flex items-center gap-2">

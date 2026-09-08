@@ -7,7 +7,11 @@
 set -u
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-XLSX="$REPO_ROOT/Stock Balance With Batch.xlsx"
+if [ -f "$SCRIPT_DIR/fixtures/Stock Balance With Batch.xlsx" ]; then
+  XLSX="$SCRIPT_DIR/fixtures/Stock Balance With Batch.xlsx"
+else
+  XLSX="$REPO_ROOT/Stock Balance With Batch.xlsx"
+fi
 FUNC_URL="${FUNC_URL:-http://127.0.0.1:54321/functions/v1/import-reference}"
 DB_URL="${DB_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
 

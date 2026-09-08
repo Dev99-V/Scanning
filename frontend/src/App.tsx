@@ -69,11 +69,11 @@ export default function App() {
           <div className="flex items-center justify-center gap-2 sm:justify-start">
             <span className="h-2.5 w-2.5 animate-ping rounded-full bg-cyan-400"></span>
             <h1 className="font-cyber text-xl font-black tracking-widest text-white sm:text-2xl">
-              PDA AI MAPPING
+              Inventory Discrepancy System
             </h1>
           </div>
           <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.25em] text-indigo-400">
-            Hệ thống Quét &amp; Đối Chiếu Tồn Kho Barcode
+            Hệ thống Kiểm kê &amp; Đối Chiếu Tồn Kho
           </p>
         </div>
 
@@ -109,9 +109,9 @@ export default function App() {
           className="group flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 px-6 py-4 font-cyber text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.02] hover:shadow-cyan-500/40 active:scale-95"
         >
           <span className="text-xl transition-transform group-hover:scale-125">🏷️</span>
-          <span>QUÉT TAG (PDA SCAN)</span>
+          <span>QUÉT TAG</span>
           <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] tracking-normal">
-            Bật Giao Diện Nổi
+            PDA Scanning...
           </span>
           </button>
         </div>
@@ -155,7 +155,7 @@ export default function App() {
               <span>📋</span> Bảng 1 — Danh Sách Quét &amp; Đối Chiếu ({rows.length})
             </h2>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              So khớp trực tiếp giữa dữ liệu thực tế quét từ PDA và số liệu nguồn từ hệ thống.
+              So sánh trực tiếp giữa dữ liệu thực tế quét từ PDA và dữ liệu nguồn từ hệ thống.
             </p>
             <div className="mt-1">
               <PresenceAvatars users={presence.viewersOfTable('table1')} tableLabel="Bảng 1" />
