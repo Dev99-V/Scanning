@@ -96,10 +96,10 @@ export default function ReferenceImportCard({ onImportSuccess, actorName, bottom
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
         <div>
           <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
-            <span>📥</span> Thẻ Import File Nguồn (Stock Balance With Batch.xlsx)
+            <span>📥</span> Tải Nguồn (Stock Balance With Batch.xlsx)
           </h3>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Tự động nhận diện dòng tiêu đề (Header: Stock Code, Warehouse, BATCH, BIN, Qty).
+            Tự động nhận diện (Stock Code, Warehouse, BATCH, BIN, Qty).
           </p>
         </div>
 

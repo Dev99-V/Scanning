@@ -446,7 +446,7 @@ describe('ReferenceDataTable', () => {
 
     // TAG001 khớp (được highlight), TAG002 chưa quét (dữ liệu dư, không được highlight)
     const excessBtn = screen.getByTestId('btn-filter-excess');
-    expect(excessBtn).toHaveTextContent(/Chỉ hiển thị dữ liệu dư \(1\)/i);
+    expect(excessBtn).toHaveTextContent(/Hiển thị dữ liệu dư \(1\)/i);
 
     // Bấm lọc dữ liệu dư
     fireEvent.click(excessBtn);

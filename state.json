@@ -146,5 +146,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-08: Cập nhật icon tab trình duyệt (favicon.png + favicon.ico, shortcut & apple-touch-icon), title tab PDA Scan & Physical inventory, chuyển file mẫu vào fixtures. Toàn bộ test và build OK, đã push lên nhánh main."
+  "notes_for_next_session": "2026-09-08: Tinh chỉnh văn phong/nhãn thẻ Bảng 2 (Thêm nguồn, Tải nguồn, 7055, nút lọc dữ liệu dư, modal sửa SL/Bin đồng bộ database). Cập nhật unit tests tương ứng, test 108/108 pass, build pass, đã push main."
 }

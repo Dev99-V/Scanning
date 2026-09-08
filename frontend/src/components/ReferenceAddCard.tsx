@@ -183,10 +183,10 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess, actorName
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center gap-2">
-              <span>➕</span> Thẻ Thêm Dữ Liệu Nguồn Mới
+              <span>➕</span>Thêm Dữ Liệu Nguồn Mới
             </h3>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Thêm dòng tồn kho gốc với gợi ý thông minh Stock Code &amp; Kho. Ngày tạo tự động gán hôm nay.
+              Thêm mới dữ liệu tồn kho. đồng bộ trực tiếp với dữ liệu quét thực tế.
             </p>
           </div>
           <span className="self-start sm:self-auto rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-400">
@@ -370,7 +370,7 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess, actorName
               </span>
             </label>
             <span className="text-[10px] text-slate-400 italic">
-              * Tích chọn để đánh dấu và đưa vào danh sách Tag in thêm 7055
+              * Tích chọn để đưa vào danh sách in thêm 7055
             </span>
           </div>
 

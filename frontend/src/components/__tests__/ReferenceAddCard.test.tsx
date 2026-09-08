@@ -57,7 +57,7 @@ describe('ReferenceAddCard', () => {
   it('hiển thị đầy đủ các trường nhập liệu và tự động chọn ngày hôm nay', () => {
     render(<ReferenceAddCard existingRows={existingRows} />);
 
-    expect(screen.getByText(/Thẻ Thêm Dữ Liệu Nguồn Mới/i)).toBeInTheDocument();
+    expect(screen.getByText(/Thêm Dữ Liệu Nguồn Mới/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Mã hàng \(Stock Code\)/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Tag ID \(Batch\)/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Kho \(Warehouse\)/i)).toBeInTheDocument();

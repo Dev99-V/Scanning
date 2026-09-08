@@ -652,7 +652,7 @@ export default function ReferenceDataTable({
                 }`}
               >
                 <span>{excessOnlyFilter ? '✓' : '📦'}</span>
-                <span>Chỉ hiển thị dữ liệu dư ({excessCount})</span>
+                <span>Hiển thị dữ liệu dư ({excessCount})</span>
               </button>
             </div>
           </div>
@@ -914,7 +914,7 @@ export default function ReferenceDataTable({
                   onClick={() => setVisibleCount((prev) => Math.min(prev + 100, filteredRows.length))}
                   className="font-bold text-indigo-400 hover:text-indigo-300 transition underline"
                 >
-                  Cuộn xuống hoặc bấm tải tiếp 100 dòng (còn {(filteredRows.length - visibleCount).toLocaleString()} dòng)
+                  Cuộn xuống hoặc bấm tải tiếp(còn {(filteredRows.length - visibleCount).toLocaleString()} dòng)
                 </button>
               )}
             </div>
@@ -939,7 +939,7 @@ export default function ReferenceDataTable({
                     Chỉnh Sửa Số Lượng Nguồn
                   </h3>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
-                    Cập nhật số lượng đồng bộ Supabase
+                    Cập nhật số lượng đồng bộ database
                   </p>
                 </div>
               </div>
@@ -1141,7 +1141,7 @@ export default function ReferenceDataTable({
                     Chỉnh Sửa Vị Trí Nguồn (Bin)
                   </h3>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
-                    Cập nhật vị trí Bin đồng bộ Supabase
+                    Cập nhật vị trí Bin đồng bộ database
                   </p>
                 </div>
               </div>
