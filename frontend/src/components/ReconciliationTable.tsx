@@ -1,7 +1,7 @@
 // ReconciliationTable — Bảng 1: dữ liệu quét thực tế & đối chiếu (Plan.md §7.2).
 // Cột: Stock code, Tag id, Số lượng, Bin, Số lượng hệ thống, Bin hệ thống, Trạng thái & Ghi chú cảnh báo.
 // Hỗ trợ cuộn chuột 100 dòng tự động tải tiếp (Infinite Scroll / Virtualization Chunking).
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table1RowKey } from '../hooks/presenceHelpers';
@@ -109,8 +109,14 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     }
   }
 
-  // Nhả khóa presence khi unmount (đóng tab giữa chừng) để dòng không kẹt.
-  useEffect(() => () => presence?.clearEditing(), [presence]);
+  // Nhả khóa presence khi unmount thật để dòng không kẹt. Dùng ref để object
+  // presence mới (đổi mỗi khi peers đổi) không kích hoạt nhả khóa sớm làm mất
+  // lock khi modal còn mở.
+  const presenceRef = useRef(presence);
+  useEffect(() => {
+    presenceRef.current = presence;
+  }, [presence]);
+  useEffect(() => () => presenceRef.current?.clearEditing(), []);
 
   function closeEditModal() {
     setEditingRow(null);

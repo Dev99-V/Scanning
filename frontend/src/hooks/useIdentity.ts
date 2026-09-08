@@ -17,11 +17,11 @@ function loadIdentity(): PresenceIdentity | null {
   try {
     const rawName = sessionStorage.getItem(NAME_KEY)?.trim() ?? '';
     if (rawName.length < 2 || rawName.length > 20) return null;
-    let sessionId = sessionStorage.getItem(SESSION_KEY);
-    if (!sessionId) {
-      sessionId = newSessionId();
-      sessionStorage.setItem(SESSION_KEY, sessionId);
-    }
+    // Mỗi tab = 1 session presence riêng: LUÔN sinh sessionId mới khi load để
+    // 2 tab duplicate (trình duyệt copy sessionStorage) không trùng sessionId
+    // rồi lọc lẫn nhau thành "tàng hình". Tên thì giữ lại từ tab gốc.
+    const sessionId = newSessionId();
+    sessionStorage.setItem(SESSION_KEY, sessionId);
     return { sessionId, name: rawName, color: colorForName(rawName) };
   } catch {
     return null;
@@ -44,11 +44,9 @@ export function useIdentity() {
     if (err) return err;
     const clean = name.trim();
     try {
-      let sessionId = sessionStorage.getItem(SESSION_KEY);
-      if (!sessionId) {
-        sessionId = newSessionId();
-        sessionStorage.setItem(SESSION_KEY, sessionId);
-      }
+      // Sinh session mới cho lần vào này để không trùng với tab duplicate.
+      const sessionId = newSessionId();
+      sessionStorage.setItem(SESSION_KEY, sessionId);
       sessionStorage.setItem(NAME_KEY, clean);
       setIdentity({ sessionId, name: clean, color: colorForName(clean) });
     } catch {

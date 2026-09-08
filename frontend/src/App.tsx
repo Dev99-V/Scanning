@@ -146,6 +146,7 @@ export default function App() {
         aria-label="Đối chiếu"
         className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-4 sm:p-5 shadow-xl"
         onMouseEnter={() => presence.setViewing('table1')}
+        onTouchStart={() => presence.setViewing('table1')}
         onFocusCapture={() => presence.setViewing('table1')}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -177,6 +178,7 @@ export default function App() {
       {/* Bảng 2: Dữ Liệu Nguồn & Thẻ Import */}
       <div
         onMouseEnter={() => presence.setViewing('table2')}
+        onTouchStart={() => presence.setViewing('table2')}
         onFocusCapture={() => presence.setViewing('table2')}
       >
         <ReferenceDataTable

@@ -28,6 +28,33 @@
 
 ## Nhật ký
 
+### [2026-09-08] Khắc phục streaming đa người không hoạt động (Bảng 2 im lặng, avatar tàng hình, khóa dòng tự nhả)
+
+- **Khu vực**: Realtime Bảng 2 (`useReferenceMap.ts`, `ReferenceDataTable.tsx`, migration `20260908090000_add_reference_stock_to_realtime.sql`), Presence (`useIdentity.ts`, `usePresence.ts`, `App.tsx`, `ReconciliationTable.tsx`)
+- **Triệu chứng**: Nhiều người cùng mở 1 frontend nhưng không thấy nhau: máy A sửa SL/Bin Bảng 2 / thêm dòng nguồn / import file mới thì máy B im lặng tới khi F5; avatar presence không hiện dù header báo Online; khóa mềm dòng (🔒) vừa hiện đã mất khi có người join/heartbeat.
+- **Nguyên nhân gốc**:
+  1. `useReferenceMap` và `ReferenceDataTable` chỉ fetch 1 lần lúc mount, không subscribe `postgres_changes` bảng `reference_stock`; publication `supabase_realtime` cũng chỉ có `scanned_data` (migration init Phase 1) nên event Bảng 2 không bao giờ tới client. Đã xác minh live: channel `scanned_data` anon vẫn nhận INSERT của user khác, còn `reference_stock` thì không có subscription nào.
+  2. `usePresence` khởi tạo `viewing=null` và `App` chỉ `setViewing` trên `onMouseEnter/onFocusCapture` → user vừa vào hoặc dùng PDA cảm ứng (không hover) bị `viewersOfTable` loại, avatar không render. Đã thấy live: peer `tra` online nhưng `viewing:null`.
+  3. `useIdentity` tái dùng `SESSION_KEY` cũ trong `sessionStorage` → 2 tab duplicate (trình duyệt copy storage) trùng `sessionId`, presence lọc self + đè presence key nên 2 tab tàng hình lẫn nhau.
+  4. `ReconciliationTable`/`ReferenceDataTable` dùng `useEffect(() => () => presence?.clearEditing(), [presence])` — object `presence` đổi mỗi khi `peers` đổi (join/heartbeat 20s) nên cleanup chạy và nhả lock dù modal còn mở.
+- **Cách sửa**:
+  1. Migration mới `20260908090000_add_reference_stock_to_realtime.sql` (idempotent, guard publication) đưa `reference_stock` vào `supabase_realtime`; `useReferenceMap` + `ReferenceDataTable` subscribe `postgres_changes` bảng `reference_stock` (INSERT/UPDATE upsert, DELETE gỡ), channel topic random như `useScannedData`.
+  2. `usePresence`: `viewing` mặc định `'table1'`; `App`: thêm `onTouchStart` cho cả 2 bảng.
+  3. `useIdentity`: mỗi lần load/save sinh `sessionId` mới (giữ tên), ghi đè `SESSION_KEY` ngay để tab duplicate lệch nhau.
+  4. Cả 2 bảng: nhả khóa chỉ ở unmount thật qua `presenceRef` (`useEffect` sync ref + cleanup `[]`), không dep `[presence]`; sửa lint ref-during-render bằng cách gán ref trong effect.
+  5. Cập nhật mock `supabase.channel` trong `ReferenceDataTable.test.tsx`, `ReferenceDataTable.presence.test.tsx`, `App.test.tsx`; thêm test mới `useReferenceMap.test.ts` (subscribe + upsert/delete) và `useIdentity.test.ts` (session khác nhau giữa 2 tab duplicate).
+- **Bằng chứng đã hết lỗi**:
+  - `npx tsc -b` exit 0; `npm run lint` (oxlint) 0 warning; `npm test -- --run` 20 files 91/91 PASS (thêm 2 files/4 tests mới); `npm run build` OK 3.5s.
+  - `bash frontend/tests/qc_phase4.sh` / `qc_phase5.sh` / `qc_phase6.sh` đều `RESULT: QC_PHASEn PASS`.
+  - Script live `realtime_check.mjs` với anon key cloud: 2 client cùng SUBSCRIBED, cùng nhận INSERT `scanned_data` của user thật đang quét, presence 2 chiều thấy nhau.
+  - Lưu ý: migration realtime Bảng 2 cần `supabase db push` lên cloud (CI backend-deploy khi merge main) thì máy khác mới stream Bảng 2 live; code frontend đã sẵn sàng.
+- **Cách phòng tránh lần sau**:
+  - Mọi bảng nghiệp vụ hiển thị đa người đều phải có subscription `postgres_changes` + tên bảng trong publication ngay từ đầu; fetch-một-lần chỉ đủ cho single-user.
+  - Presence `viewing` phải có giá trị mặc định và hỗ trợ touch, không trông chờ hover.
+  - `sessionId` presence là định danh tab, không được rào qua storage có thể bị duplicate-tab copy.
+  - Cleanup nhả lock/untrack chỉ ở unmount thật (dep `[]` + ref), không dep object thay đổi theo peers.
+- **Liên quan**: Plan.md §5 (Realtime), §9 Phase 5/6/8; Skills B/C; `state.json:pending_contract_changes` (migration realtime chờ push cloud).
+
 ### [2026-09-05] Khắc phục lỗi Import file nguồn mẫu (2).xlsx và lỗi Bảng 1 không hiển thị dữ liệu quét
 
 - **Khu vực**: Edge Function `import-reference`, `ReferenceImportCard.tsx`, Frontend Authentication (`AuthModal.tsx`, `App.tsx`, `useScannedData.ts`, `useReferenceMap.ts`, `ReferenceDataTable.tsx`)

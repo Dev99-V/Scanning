@@ -35,8 +35,11 @@ export interface UsePresenceApi {
 
 export function usePresence(identity: PresenceIdentity | null): UsePresenceApi {
   const [peers, setPeers] = useState<PresencePeer[]>([]);
+  // Mặc định đang xem Bảng 1 (bảng chính): user vừa vào đã hiện avatar ở
+  // header Bảng 1 ngay, kể cả chưa di chuột (PDA cảm ứng không có hover) —
+  // trước đây viewing=null nên viewersOfTable loại hết, online mà "tàng hình".
   const stateRef = useRef({
-    viewing: null as PresenceTable | null,
+    viewing: 'table1' as PresenceTable | null,
     editing: null as PresenceEditing | null,
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -4,17 +4,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UsePresenceApi } from '../../hooks/usePresence';
 import ReferenceDataTable from '../ReferenceDataTable';
 
-const { select, order, range, rpc } = vi.hoisted(() => ({
+const { select, order, range, rpc, chanOn, chanSubscribe, removeChannel } = vi.hoisted(() => ({
   select: vi.fn(),
   order: vi.fn(),
   range: vi.fn(),
   rpc: vi.fn(),
+  chanOn: vi.fn(),
+  chanSubscribe: vi.fn(),
+  removeChannel: vi.fn(),
 }));
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: () => ({ select }),
     rpc,
+    channel: () => ({ on: chanOn }),
+    removeChannel,
   },
 }));
 
@@ -45,6 +50,8 @@ beforeEach(() => {
   order.mockReturnValue({ range });
   range.mockResolvedValue({ data: ROWS, error: null });
   rpc.mockResolvedValue({ data: { ok: true }, error: null });
+  chanOn.mockReturnValue({ subscribe: chanSubscribe });
+  chanSubscribe.mockReturnValue({});
 });
 
 describe('ReferenceDataTable presence lock', () => {

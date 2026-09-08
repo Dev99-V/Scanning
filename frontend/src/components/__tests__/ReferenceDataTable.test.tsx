@@ -2,18 +2,23 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ReferenceDataTable from '../ReferenceDataTable';
 
-const { select, order, range, eq, rpc } = vi.hoisted(() => ({
+const { select, order, range, eq, rpc, chanOn, chanSubscribe, removeChannel } = vi.hoisted(() => ({
   select: vi.fn(),
   order: vi.fn(),
   range: vi.fn(),
   eq: vi.fn(),
   rpc: vi.fn(),
+  chanOn: vi.fn(),
+  chanSubscribe: vi.fn(),
+  removeChannel: vi.fn(),
 }));
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: () => ({ select }),
     rpc,
+    channel: () => ({ on: chanOn }),
+    removeChannel,
   },
 }));
 
@@ -37,6 +42,8 @@ beforeEach(() => {
   range.mockReturnValue(Promise.resolve({ data: ROWS, error: null }));
   eq.mockImplementation(() => ({ range, eq, thenable: thenable() }));
   rpc.mockResolvedValue({ data: { ok: true }, error: null });
+  chanOn.mockReturnValue({ subscribe: chanSubscribe });
+  chanSubscribe.mockReturnValue({});
 });
 
 describe('ReferenceDataTable', () => {

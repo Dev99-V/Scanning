@@ -80,6 +80,50 @@ export function useReferenceMap() {
 
   useEffect(() => {
     void load();
+
+    // Streaming đa người: Bảng 2 phải tự cập nhật khi máy khác sửa SL/Bin,
+    // thêm dòng nguồn hoặc import file mới — trước đây hook chỉ load 1 lần
+    // lúc mount nên các máy khác im lặng tới khi F5.
+    // (Cần kèm migration đưa reference_stock vào publication supabase_realtime.)
+    const channelTopic = `reference_stock_changes_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const channel = supabase
+      .channel(channelTopic)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reference_stock' },
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const incoming = payload.new as ReferenceRow & { tag_7055?: boolean };
+            const cleanId = (incoming?.batch_id || '').trim();
+            if (!cleanId) return;
+            setByBatch((prev) => {
+              const next = new Map(prev);
+              next.set(cleanId, {
+                stock_code: incoming.stock_code,
+                qty: incoming.qty,
+                bin: incoming.bin,
+                tag_7055: Boolean(incoming.tag_7055),
+              });
+              return next;
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const gone = payload.old as { batch_id?: string };
+            const cleanId = (gone?.batch_id || '').trim();
+            if (!cleanId) return;
+            setByBatch((prev) => {
+              if (!prev.has(cleanId)) return prev;
+              const next = new Map(prev);
+              next.delete(cleanId);
+              return next;
+            });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (channel) void supabase.removeChannel?.(channel);
+    };
   }, [load]);
 
   return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin, addBatch };

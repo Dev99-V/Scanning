@@ -17,9 +17,13 @@ vi.mock('../lib/supabase', () => ({
             eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }),
             then: (res: (v: unknown) => void) => Promise.resolve({ data: [], error: null }).then(res),
           }),
+          range: () => Promise.resolve({ data: [], error: null }),
         }),
       }),
     }),
+    channel: () => ({ on: () => ({ subscribe: () => ({}) }) }),
+    removeChannel: () => Promise.resolve(),
+    rpc: () => Promise.resolve({ data: { ok: true }, error: null }),
   },
 }));
 

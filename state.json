@@ -1,6 +1,6 @@
 {
   "project_name": "pda-scan-reconciliation-system",
-  "last_updated": "2026-09-07",
+  "last_updated": "2026-09-08",
   "read_before_start": [
     "Plan.md",
     "Skills.md",
@@ -53,7 +53,14 @@
     "Cột 'Stock Code' và 'BIN' có khoảng trắng đệm cuối chuỗi, cần TRIM khi import",
     "1 Stock Code có thể có nhiều BATCH khác nhau ở nhiều Warehouse/BIN khác nhau"
   ],
-  "pending_contract_changes": [],
+  "pending_contract_changes": [
+    {
+      "type": "realtime_publication",
+      "detail": "Migration 20260908090000_add_reference_stock_to_realtime.sql đưa reference_stock vào publication supabase_realtime; frontend (useReferenceMap + ReferenceDataTable) đã subscribe postgres_changes bảng này. Cần supabase db push lên cloud (CI backend-deploy khi merge main) thì Bảng 2 mới stream đa người live.",
+      "status": "pending_cloud_apply",
+      "date": "2026-09-08"
+    }
+  ],
   "decisions_resolved_layout_2026_09_04": {
     "layout_structure": "Phương án B: Xếp chồng cả 2 bảng trên cùng màn hình chính, cuộn 100 dòng độc lập.",
     "qty_input_policy": "Luôn để trống ô số lượng để bắt buộc người kiểm đếm phải gõ tay từ đầu.",
@@ -127,6 +134,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-07 (presence realtime): Thêm hiện diện streaming kiểu Excel cho 2-3 người cùng frontend theo yêu cầu user (khóa theo dòng + modal đặt tên bắt buộc). Mới: hooks presenceHelpers/usePresence/useIdentity (Supabase Presence channel presence:reconciliation:v1, heartbeat 20s, stale TTL 90s, màu avatar ổn định theo tên, tên lưu sessionStorage UI-state), components NameGateModal/PresenceAvatars; Bảng 1 khóa key t1:<id>, Bảng 2 khóa key t2:<batch> (disable nút Sửa/Xóa + badge tên người giữ, nhả khóa khi lưu/hủy/unmount). Không migration DB — chặn cứng ghi đồng thời vẫn do RPC pg_advisory_xact_lock (db_row_lock_rpc). Bằng chứng: tsc clean, oxlint 0 warning, vitest 18 files 87/87 PASS (mới 5 files: presenceHelpers/NameGateModal/PresenceAvatars/Recon.presence/Ref.presence), vite build OK, QC Phase 4/5/6 PASS. Lưu ý vận hành: Realtime Presence cần bật Realtime trên project (đã bật cho scanned_data); anon vẫn thấy presence vì cùng WebSocket JWT anon."
+  "notes_for_next_session": "2026-09-08 (fix streaming đa người): Bảng 2 đã có realtime (migration 20260908090000 + subscribe ở useReferenceMap/ReferenceDataTable), presence hiện avatar ngay (viewing mặc định table1 + touch), mỗi tab 1 sessionId (hết tàng hình khi duplicate tab), khóa dòng chỉ nhả ở unmount thật. Bằng chứng: tsc clean, oxlint 0 warning, vitest 20 files 91/91 PASS (mới useReferenceMap/useIdentity), vite build OK, QC Phase 4/5/6 PASS, live check anon 2 client cùng nhận INSERT scanned_data + presence 2 chiều. Còn lại: merge main để CI chạy backend db push (áp migration realtime Bảng 2 lên cloud) + frontend deploy Pages rồi mở 2 máy quét thử."
 }
-

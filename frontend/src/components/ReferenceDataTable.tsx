@@ -2,7 +2,7 @@
 // Hiển thị đầy đủ tất cả các trường dữ liệu như trong file nguồn (Stock Code, Batch, Warehouse, Bin, Qty, Ngày tạo).
 // Lấy toàn bộ dữ liệu từ Supabase qua phân trang range (không bị chặn ở mốc 1000 dòng).
 // Bộ lọc thông minh: tự động dò tìm mọi trường, riêng Kho cần thêm tiền tố 'WH' (vd WH01, WH50).
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table2RowKey } from '../hooks/presenceHelpers';
 import { supabase } from '../lib/supabase';
@@ -196,8 +196,14 @@ export default function ReferenceDataTable({
   const [isSavingBin, setIsSavingBin] = useState(false);
   const [editBinError, setEditBinError] = useState<string | null>(null);
 
-  // Nhả khóa presence khi unmount để dòng nguồn không kẹt.
-  useEffect(() => () => presence?.clearEditing(), [presence]);
+  // Nhả khóa presence khi unmount thật (đóng tab giữa chừng) để dòng nguồn
+  // không kẹt. Dùng ref để object presence mới (đổi mỗi khi peers đổi) không
+  // kích hoạt nhả khóa sớm làm mất lock khi modal còn mở.
+  const presenceRef = useRef(presence);
+  useEffect(() => {
+    presenceRef.current = presence;
+  }, [presence]);
+  useEffect(() => () => presenceRef.current?.clearEditing(), []);
 
   function openEditBinModal(row: ReferenceLine) {
     const holder = presence?.getLock('table2', table2RowKey(row.batch_id));
@@ -352,8 +358,48 @@ export default function ReferenceDataTable({
     }
     void load();
 
+    // Streaming đa người cho chính danh sách Bảng 2: máy khác sửa SL/Bin,
+    // thêm dòng hoặc import file mới thì bảng này tự cập nhật, không cần F5.
+    // (Cần kèm migration đưa reference_stock vào publication supabase_realtime.)
+    const channelTopic = `reference_table_rows_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const channel = supabase
+      .channel(channelTopic)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reference_stock' },
+        (payload) => {
+          if (cancelled) return;
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const incoming = payload.new as ReferenceLine;
+            const cleanId = (incoming?.batch_id || '').trim();
+            if (!cleanId) return;
+            setRows((prev) => {
+              const idx = prev.findIndex((r) => (r.batch_id || '').trim() === cleanId);
+              if (idx !== -1) {
+                const next = [...prev];
+                // Giữ vết cũ đang hiển thị nếu payload realtime chưa kèm (import/sửa từ máy khác).
+                next[idx] = {
+                  ...incoming,
+                  previous_bin: incoming.previous_bin ?? next[idx].previous_bin ?? null,
+                  previous_qty: incoming.previous_qty ?? next[idx].previous_qty ?? null,
+                };
+                return next;
+              }
+              return [incoming, ...prev];
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const gone = payload.old as { batch_id?: string };
+            const cleanId = (gone?.batch_id || '').trim();
+            if (!cleanId) return;
+            setRows((prev) => prev.filter((r) => (r.batch_id || '').trim() !== cleanId));
+          }
+        },
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      if (channel) void supabase.removeChannel?.(channel);
     };
   }, [refreshTrigger]);
 
