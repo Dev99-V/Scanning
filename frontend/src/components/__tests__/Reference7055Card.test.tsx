@@ -74,4 +74,11 @@ describe('Reference7055Card', () => {
     expect(downloadSpy).toHaveBeenCalledWith(mock7055Rows);
     downloadSpy.mockRestore();
   });
+
+  it('chế độ bare: nội dung giữ nguyên nhưng bỏ khung thẻ ngoài để nhúng vào thẻ Import', () => {
+    render(<Reference7055Card rows7055={mock7055Rows} bare />);
+    expect(screen.getByText(/Tag in thêm \(7055\)/i)).toBeInTheDocument();
+    expect(screen.getByTestId('ref-7055-badge-count')).toHaveTextContent('2 tag đã ghi nhận');
+    expect(screen.getByTestId('ref-7055-card').className).not.toContain('border-purple-500/30');
+  });
 });

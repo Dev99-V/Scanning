@@ -498,12 +498,15 @@ export default function ReferenceDataTable({
 
   return (
     <section aria-label="Dữ liệu hệ thống" className="flex flex-col gap-4">
-      {/* Khu vực thẻ hoạt động Bảng 2: Import file nguồn & Thêm dữ liệu nguồn mới & Tag in thêm 7055 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {/* Khu vực thẻ hoạt động Bảng 2: Import (gồm khối 7055 bên trong) + Thẻ Thêm nguồn nới rộng */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Thẻ Import: giữ nguyên phần import, khối Tag 7055 nằm chung bên dưới vạch ngăn */}
         <ReferenceImportCard
           actorName={actorName}
           onImportSuccess={() => setRefreshTrigger((prev) => prev + 1)}
+          bottomContent={<Reference7055Card bare rows7055={rows7055} />}
         />
+        {/* Thẻ Thêm nguồn kéo dài nửa phải, thẳng hàng với bảng trên/dưới */}
         <ReferenceAddCard
           existingRows={rows}
           actorName={actorName}
@@ -512,9 +515,8 @@ export default function ReferenceDataTable({
             onReferenceAdded?.(newRow);
           }}
         />
-        <Reference7055Card rows7055={rows7055} />
         {/* Nhật ký hoạt động: full-width ngay dưới các thẻ, chung khu vực thẻ Bảng 2 */}
-        <div className="md:col-span-2 xl:col-span-3">
+        <div className="md:col-span-2">
           <ActivityLogCard />
         </div>
       </div>

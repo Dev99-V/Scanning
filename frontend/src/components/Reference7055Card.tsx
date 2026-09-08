@@ -7,9 +7,12 @@ import type { ReferenceLine } from './ReferenceDataTable';
 
 interface Reference7055CardProps {
   rows7055: ReferenceLine[];
+  /** Chế độ trần: bỏ khung thẻ ngoài để nhúng chung vào thẻ khác (vd thẻ Import).
+   * Nội dung và modal giữ nguyên — mặc định false để test/cách dùng cũ không đổi. */
+  bare?: boolean;
 }
 
-export default function Reference7055Card({ rows7055 }: Reference7055CardProps) {
+export default function Reference7055Card({ rows7055, bare }: Reference7055CardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -47,7 +50,11 @@ export default function Reference7055Card({ rows7055 }: Reference7055CardProps) 
       {/* Thẻ hiển thị trên giao diện kế bên Thẻ Thêm Dữ Liệu Nguồn */}
       <div
         data-testid="ref-7055-card"
-        className="rounded-2xl border border-purple-500/30 bg-slate-900/80 p-4 sm:p-5 shadow-lg flex flex-col justify-between"
+        className={
+          bare
+            ? 'flex flex-col justify-between'
+            : 'rounded-2xl border border-purple-500/30 bg-slate-900/80 p-4 sm:p-5 shadow-lg flex flex-col justify-between'
+        }
       >
         <div>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">

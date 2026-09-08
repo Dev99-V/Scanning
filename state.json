@@ -146,5 +146,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-08 (nhật ký hoạt động + fix export): thẻ log realtime full-width dưới 3 thẻ Bảng 2 (filter + export), audit đủ quét/thêm/sửa/xóa kèm tên, export text thuần hết dính nháy (giữ số 0, chống nhảy E+). Verify: vitest 105/105, build OK, QC1/3/4/5/6 PASS, DB local sạch 2721/0/0. Còn lại: push main để CI push migration + deploy functions + Pages."
+  "notes_for_next_session": "2026-09-08 (7055 vào trong thẻ Import): Reference7055Card thêm chế độ bare (bỏ khung ngoài), ReferenceImportCard thêm vùng bottomContent, lưới 2 cột Import(+7055)/Thêm nguồn + Nhật ký full-width. Verify: tsc/lint sạch, vitest 108/108. Chưa push (chờ user chốt ngoài web)."
 }

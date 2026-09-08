@@ -7,9 +7,11 @@ interface ReferenceImportCardProps {
   onImportSuccess?: () => void;
   /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
   actorName?: string | null;
+  /** Nội dung nhúng thêm ở cuối thẻ (vd khối Tag 7055) — phần import giữ nguyên. */
+  bottomContent?: React.ReactNode;
 }
 
-export default function ReferenceImportCard({ onImportSuccess, actorName }: ReferenceImportCardProps) {
+export default function ReferenceImportCard({ onImportSuccess, actorName, bottomContent }: ReferenceImportCardProps) {
   const [uploading, setUploading] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -138,6 +140,12 @@ export default function ReferenceImportCard({ onImportSuccess, actorName }: Refe
       {errorMessage && (
         <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-950/50 p-3 text-xs text-rose-200">
           {errorMessage}
+        </div>
+      )}
+
+      {bottomContent && (
+        <div className="mt-4 border-t border-white/10 pt-4">
+          {bottomContent}
         </div>
       )}
     </div>
