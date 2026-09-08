@@ -170,7 +170,7 @@ export default function Reference7055Card({ rows7055, bare }: Reference7055CardP
               {rows7055.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 rounded-2xl border border-white/5 bg-black/40">
                   <span className="text-3xl mb-2">🏷️</span>
-                  <p className="font-bold text-sm text-slate-300">Chưa có Tag nào được in thêm qua mã 7055.</p>
+                  <p className="font-bold text-sm text-slate-300">Chưa có Tag nào được in thêm từ 7055.</p>
                   <p className="text-xs text-slate-500 mt-1 max-w-md">
                     Khi thêm dữ liệu nguồn mới ở thẻ kế bên, hãy tích chọn ô &quot;7055&quot; để tag được tự động đưa vào danh sách đặc biệt này.
                   </p>
