@@ -28,6 +28,21 @@
 
 ## Nhật ký
 
+### [2026-09-09] Bịt race 2 người thêm cùng Tag nguồn (advisory lock) + đánh giá đề xuất cắt audit log ở 1000 dòng
+
+- **Khu vực**: RPC `add_reference_stock` (migration `20260909090000_add_reference_stock_advisory_lock.sql`), Frontend `ReferenceAddCard.tsx` (giữ nguyên)
+- **Triệu chứng**: 2 người thêm cùng 1 Tag ID mới gần như cùng lúc → cả 2 `SELECT` đều thấy "chưa có" → cả 2 `INSERT` → 1 người ăn lỗi unique 23505 thô ("Lỗi thêm dữ liệu..."), thay vì cảnh báo trùng đẹp kèm nút "Ghi đè cập nhật".
+- **Nguyên nhân gốc**: `add_reference_stock` làm check-then-act (`SELECT` rồi `INSERT`) mà không có lock, trong khi `scan_submit`/`resolve_duplicate` đã có `pg_advisory_xact_lock` theo batch (đúng `concurrency_strategy=db_row_lock_rpc`).
+- **Cách sửa**: `perform pg_advisory_xact_lock(hashtext('scan_submit:' || v_clean_batch_id))` ngay sau khi trim batch, trước mọi `SELECT/INSERT/UPDATE`. Dùng CHUNG namespace `scan_submit:` với scan/resolve để thêm-vs-quét cùng Tag cũng serialize (cùng đụng dòng reference + dòng scanned liên quan). Không đổi params/returns nên frontend giữ nguyên: người đến sau luôn nhận `duplicate_batch_id` → thẻ hiện cảnh báo vàng + nút ghi đè.
+- **Bằng chứng đã hết lỗi** (Supabase local, DB thật):
+  - 10 `add_reference_stock` cùng Tag song song → đúng 1 `ok:true` + 9 `duplicate_batch_id`, 0 lỗi 23505, đúng 1 dòng trong `reference_stock`.
+  - Hồi quy đủ nhánh: thêm mới ok / trùng cảnh báo đẹp / ghi đè ok kèm vết `previous_bin/previous_qty` / `batch_id_required` / `invalid_qty`.
+  - Liên tác thêm→quét cùng Tag: quét sau thấy nguồn ngay (`status ok`).
+  - Dọn sạch dữ liệu test, DB local nguyên vẹn (reference 2721 / scanned 0 / audit 0).
+- **Cách phòng tránh lần sau**: mọi RPC check-then-act trên cùng 1 key nghiệp vụ đều phải lấy advisory lock trước khi SELECT, chung 1 namespace cho mọi RPC đụng cùng key.
+- **Liên quan**: Plan.md §5; Skills A; `state.json:pending_contract_changes` (migration chờ push cloud). Không đổi contract nên frontend không cần sửa.
+- **Quyết định về audit log (chưa làm — chờ user chốt)**: KHÔNG nên tự xóa khi quá 1000 dòng. Đo thực tế 1 dòng audit ~176 bytes → 689 dòng hiện tại ≈ 120KB; 100.000 dòng ≈ 20MB trong khi hạn free là 500MB — bảng này phải hàng chục năm mới thành gánh nặng. Xóa sẽ phá đúng mục đích truy vết của bảng, trigger prune còn cộng thêm chi phí DELETE vào MỖI lượt quét. Nếu sau này lo dung lượng: export CSV cũ ra Storage rồi mới xóa, hoặc nâng hạn khi thật sự cần.
+
 ### [2026-09-08] Khắc phục streaming đa người không hoạt động (Bảng 2 im lặng, avatar tàng hình, khóa dòng tự nhả)
 
 - **Khu vực**: Realtime Bảng 2 (`useReferenceMap.ts`, `ReferenceDataTable.tsx`, migration `20260908090000_add_reference_stock_to_realtime.sql`), Presence (`useIdentity.ts`, `usePresence.ts`, `App.tsx`, `ReconciliationTable.tsx`)
