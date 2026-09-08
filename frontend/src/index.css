@@ -36,6 +36,26 @@ body {
   to { box-shadow: inset 0 0 15px #f43f5e; }
 }
 
+/* Dải avatar online ở header: người mới vào trượt từ trái sang,
+   người thoát trượt sang phải rồi mờ dần (OnlineUsersStrip). */
+@keyframes online-slide-in {
+  from { transform: translateX(-120%) scale(0.6); opacity: 0; }
+  to { transform: translateX(0) scale(1); opacity: 1; }
+}
+
+@keyframes online-slide-out {
+  from { transform: translateX(0) scale(1); opacity: 1; }
+  to { transform: translateX(120%) scale(0.6); opacity: 0; }
+}
+
+.animate-online-in {
+  animation: online-slide-in 0.35s ease-out;
+}
+
+.animate-online-out {
+  animation: online-slide-out 0.35s ease-in forwards;
+}
+
 /* Thanh cuộn đồng bộ phong cách tối / cyber của hệ thống */
 ::-webkit-scrollbar {
   width: 8px;

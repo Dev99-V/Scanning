@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
+import type { PresencePeer } from '../hooks/presenceHelpers';
 import type { ScanRow } from '../lib/types';
 
 const { submitScan, resolveDuplicate } = vi.hoisted(() => ({
@@ -61,8 +62,8 @@ vi.mock('../hooks/useIdentity', () => ({
 }));
 vi.mock('../hooks/usePresence', () => ({
   usePresence: () => ({
-    peers: [],
-    onlineCount: 1,
+    peers: currentMockPeers,
+    onlineCount: currentMockPeers.length + 1,
     setViewing: vi.fn(),
     setEditing: vi.fn(),
     clearEditing: vi.fn(),
@@ -72,9 +73,12 @@ vi.mock('../hooks/usePresence', () => ({
   }),
 }));
 
+let currentMockPeers: PresencePeer[] = [];
+
 beforeEach(() => {
   vi.clearAllMocks();
   currentMockRows = [mockExistingRow];
+  currentMockPeers = [];
 });
 
 describe('App layout and modal workflow', () => {
@@ -104,6 +108,25 @@ describe('App layout and modal workflow', () => {
     expect(onlineDialog).toBeInTheDocument();
     expect(within(onlineDialog).getByText('Tester')).toBeInTheDocument();
     expect(within(onlineDialog).getByText('Bạn (Tab này)')).toBeInTheDocument();
+  });
+
+  it('header hiển thị avatar từng người online riêng lẻ, click mở danh sách', async () => {
+    currentMockPeers = [
+      { sessionId: 's-a', name: 'Anh A', color: 'hsl(10, 75%, 55%)', viewing: 'table1', editing: null, updatedAt: Date.now() },
+      { sessionId: 's-b', name: 'Chị B', color: 'hsl(200, 75%, 55%)', viewing: 'table2', editing: null, updatedAt: Date.now() },
+    ];
+    render(<App />);
+
+    // Tách riêng từng người, không gộp Online (2).
+    const strip = screen.getByTestId('online-strip');
+    expect(within(strip).getByText('Anh A')).toBeInTheDocument();
+    expect(within(strip).getByText('Chị B')).toBeInTheDocument();
+    expect(screen.queryByText(/Online \(/)).not.toBeInTheDocument();
+
+    fireEvent.click(strip);
+    const onlineDialog = await screen.findByRole('dialog', { name: 'Danh sách người dùng đang online' });
+    expect(onlineDialog).toBeInTheDocument();
+    expect(within(onlineDialog).getByText('Anh A')).toBeInTheDocument();
   });
 
   it('luồng quét Bin -> Tag -> Trùng -> Ghi thêm -> Điền SL tay -> Lưu', async () => {

@@ -146,5 +146,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-08: Fix test ReferenceImportCard lỗi thời sau PR #24 (expect Chọn file Excel nạp vào -> Nạp Nguồn cho khớp component dea663a); npm test local 24 files 109/109 PASS, warning key ActivityLogCard không còn tái hiện. Đã commit+push main, chờ CI deploy xanh."
+  "notes_for_next_session": "2026-09-08: Header hiện avatar từng người online riêng lẻ (OnlineUsersStrip cạnh nút Quét Tag, animation trượt vào/ra, tự co mini +N khi đông, click mở modal); vitest 116/116 + tsc + lint + build xanh. Đã commit+push main, chờ CI deploy xanh."
 }

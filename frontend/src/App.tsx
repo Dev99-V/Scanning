@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import ExportButton from './components/ExportButton';
 import NameGateModal from './components/NameGateModal';
 import OnlineUsersModal from './components/OnlineUsersModal';
+import OnlineUsersStrip from './components/OnlineUsersStrip';
 import PdaScanModal from './components/PdaScanModal';
 import PresenceAvatars from './components/PresenceAvatars';
 import ReconciliationTable from './components/ReconciliationTable';
@@ -80,9 +81,9 @@ export default function App() {
         </div>
 
         {/* Nút Gọi thẻ Quét Tag */}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 w-full items-center gap-3 sm:w-auto">
           {identity && (
-            <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
+            <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
               <span
                 aria-label={`Bạn đang là ${identity.name}`}
                 title={`Bạn đang là ${identity.name}`}
@@ -93,14 +94,7 @@ export default function App() {
               </span>
               <div className="leading-tight">
                 <p className="text-xs font-bold text-white">{identity.name}</p>
-                <button
-                  type="button"
-                  onClick={() => setIsOnlineUsersOpen(true)}
-                  className="text-left text-[10px] text-emerald-400 transition hover:text-emerald-300"
-                  aria-label={`Xem danh sách ${presence.onlineCount} người đang online`}
-                >
-                  ● Online ({presence.onlineCount})
-                </button>
+                <p className="text-[10px] text-emerald-400">● Đang online</p>
               </div>
               <button
                 type="button"
@@ -112,10 +106,17 @@ export default function App() {
               </button>
             </div>
           )}
+          {identity && (
+            <OnlineUsersStrip
+              peers={presence.peers}
+              onlineCount={presence.onlineCount}
+              onOpenList={() => setIsOnlineUsersOpen(true)}
+            />
+          )}
           <button
             type="button"
             onClick={() => setIsScanModalOpen(true)}
-          className="group flex items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 px-6 py-4 font-cyber text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.02] hover:shadow-cyan-500/40 active:scale-95"
+          className="group flex shrink-0 items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-cyan-500 px-6 py-4 font-cyber text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/30 transition-all hover:scale-[1.02] hover:shadow-cyan-500/40 active:scale-95"
         >
           <span className="text-xl transition-transform group-hover:scale-125">🏷️</span>
           <span>QUÉT TAG</span>

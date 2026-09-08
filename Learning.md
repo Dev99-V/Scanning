@@ -28,6 +28,18 @@
 
 ## Nhật ký
 
+### [2026-09-08] Dải avatar online tách từng người trên header (thay Online (N) gộp)
+
+- **Khu vực**: Frontend header (`App.tsx`, mới `OnlineUsersStrip.tsx`, `index.css`)
+- **Triệu chứng & Yêu cầu**: header chỉ hiện `Online (2)` gộp, không biết ai đang online. Muốn avatar từng người cạnh nút Quét Tag, người vào trượt từ trái sang, đông tự co không tràn layout.
+- **Cách sửa**:
+  1. `index.css`: keyframes `online-slide-in` (trượt trái→phải + scale) / `online-slide-out` (trượt phải + mờ) + classes `.animate-online-in/out` (350ms).
+  2. Mới `OnlineUsersStrip.tsx`: mỗi peer 1 chip (avatar màu + tên + chấm xanh); chip mount mới tự chạy animation vào (key=sessionId); peer rời được giữ render 350ms với animation thoát (ref map + timeout, hủy nếu quay lại, guard unmount); tier co theo số người: full ≤3 (avatar + tên) → compact 4-6 (nhỏ + tên cắt ngắn) → mini >6 (avatar only, tối đa 9 + badge +N); khung `flex-nowrap overflow-hidden min-w-0`, click mở modal chi tiết.
+  3. `App.tsx`: bỏ nút `Online (N)` gộp trong thẻ tên, đặt strip giữa thẻ tên và nút Quét Tag (cả 2 đầu `shrink-0`, strip `flex-1 min-w-0` co).
+- **Bằng chứng đã hết lỗi**: `vitest` 25 files 116/116 PASS (mới 6 tests strip: tách user/không gộp, animation vào, thoát-giữ-350ms-rồi-mất, mini +N + overflow-hidden, click mở modal, 1 mình; App thêm test strip 2 user + click mở modal); `tsc -b` exit 0; `oxlint` sạch; `vite build` OK.
+- **Cách phòng tránh lần sau**: đổi nhãn/UI header phải grep test assert text cũ trước khi push (bài học PR #24).
+- **Liên quan**: Plan.md §5 (Realtime/presence); `OnlineUsersModal` giữ nguyên làm danh sách chi tiết.
+
 ### [2026-09-08] Test ReferenceImportCard fail sau khi đổi nhãn nút (PR #24)
 
 - **Khu vực**: Frontend `ReferenceImportCard.tsx` + `__tests__/ReferenceImportCard.test.tsx`
