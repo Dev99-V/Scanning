@@ -15,7 +15,7 @@ describe('ReferenceImportCard', () => {
   it('render tiêu đề import và nút chọn file', () => {
     render(<ReferenceImportCard />);
     expect(screen.getByText(/Tải Nguồn/i)).toBeInTheDocument();
-    expect(screen.getByText(/Chọn file Excel nạp vào/i)).toBeInTheDocument();
+    expect(screen.getByText(/Nạp Nguồn/i)).toBeInTheDocument();
   });
 
   it('hiển thị bottomContent (khối 7055) chung bên dưới phần import', () => {

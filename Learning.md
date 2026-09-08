@@ -28,6 +28,16 @@
 
 ## Nhật ký
 
+### [2026-09-08] Test ReferenceImportCard fail sau khi đổi nhãn nút (PR #24)
+
+- **Khu vực**: Frontend `ReferenceImportCard.tsx` + `__tests__/ReferenceImportCard.test.tsx`
+- **Triệu chứng**: CI `npm test` fail 1/109 — `Unable to find an element with the text: /Chọn file Excel nạp vào/i`, DOM thực tế chỉ còn nút `Nạp Nguồn`.
+- **Nguyên nhân gốc**: commit `dea663a` (PR #24) đổi nhãn nút `Chọn file Excel nạp vào` → `Nạp Nguồn` (nối tiếp `75eb450` đổi tiêu đề nhưng cũng quên dòng expect này) mà không cập nhật test — test lỗi thời, component mới mới là đúng.
+- **Cách sửa**: `ReferenceImportCard.test.tsx:18` expect `/Chọn file Excel nạp vào/i` → `/Nạp Nguồn/i`.
+- **Bằng chứng đã hết lỗi**: `npm test -- --run` local 24 files 109/109 PASS; chạy riêng 2 file `ReferenceDataTable` + `ActivityLogCard` không còn warning `unique key`.
+- **Cách phòng tránh lần sau**: mọi commit đổi nhãn/UI phải grep test còn assert text cũ (`grep -rn "nhãn cũ" frontend/src`) trước khi push.
+- **Liên quan**: Plan.md §9 Phase 6 (Bảng 2/import); `state.json:notes_for_next_session`.
+
 ### [2026-09-08] Bảng Nhật ký hoạt động realtime + export Excel text thuần không nháy đầu
 
 - **Khu vực**: RPC audit (`20260909091000_activity_log.sql`), Edge Functions (`scan-submit`, `resolve-duplicate`, `import-reference`), Frontend (`ActivityLogCard`, `useAuditLog`, `auditLog.ts`, `exportExcel.ts`, luồn `actorName` khắp App)

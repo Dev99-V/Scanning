@@ -146,5 +146,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-08: Tinh chỉnh văn phong/nhãn thẻ Bảng 2 (Thêm nguồn, Tải nguồn, 7055, nút lọc dữ liệu dư, modal sửa SL/Bin đồng bộ database). Cập nhật unit tests tương ứng, test 108/108 pass, build pass, đã push main. Bổ sung App wiring cho OnlineUsersModal: header mở danh sách tên online từ Supabase Presence, count + peers realtime; bắt buộc đặt tên vẫn giữ nguyên. App test 4/4, build/lint pass. Full suite còn 1 test cũ ReferenceImportCard kỳ vọng nhãn đã đổi từ Chọn file Excel nạp vào sang Nạp Nguồn."
+  "notes_for_next_session": "2026-09-08: Fix test ReferenceImportCard lỗi thời sau PR #24 (expect Chọn file Excel nạp vào -> Nạp Nguồn cho khớp component dea663a); npm test local 24 files 109/109 PASS, warning key ActivityLogCard không còn tái hiện. Đã commit+push main, chờ CI deploy xanh."
 }
