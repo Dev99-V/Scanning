@@ -43,14 +43,17 @@ export default function NameGateModal({ open, onSubmit }: NameGateModalProps) {
             {initialForName(preview)}
           </span>
           <h2 className="font-cyber text-base font-black uppercase tracking-widest text-white">
-            Ai đang kiểm kê?
+            Xác Nhận Danh Tính
           </h2>
-          <p className="text-xs text-slate-400">
-            Nhập tên để tạo Streaming.
+          <p className="text-xs text-cyan-300 font-semibold">
+            Bắt buộc đặt tên để vào hệ thống
+          </p>
+          <p className="text-[11px] text-slate-400">
+            Tên của bạn sẽ hiển thị trong danh sách Online và lưu vào nhật ký hoạt động kiểm kê.
           </p>
         </div>
         <label htmlFor="presence-name" className="mt-4 block text-left text-[11px] font-bold uppercase tracking-widest text-slate-300">
-          Tên hiển thị (2–20 ký tự)
+          Tên hiển thị (2–20 ký tự) *
         </label>
         <input
           id="presence-name"

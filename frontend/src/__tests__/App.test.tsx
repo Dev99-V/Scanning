@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../App';
 import type { ScanRow } from '../lib/types';
@@ -93,6 +93,17 @@ describe('App layout and modal workflow', () => {
     // Modal hiện lên với tiêu đề
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('PDA SCAN MATRIX')).toBeInTheDocument();
+  });
+
+  it('mở danh sách người online từ số đếm trên header', async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Xem danh sách 1 người đang online/i }));
+
+    const onlineDialog = await screen.findByRole('dialog', { name: 'Danh sách người dùng đang online' });
+    expect(onlineDialog).toBeInTheDocument();
+    expect(within(onlineDialog).getByText('Tester')).toBeInTheDocument();
+    expect(within(onlineDialog).getByText('Bạn (Tab này)')).toBeInTheDocument();
   });
 
   it('luồng quét Bin -> Tag -> Trùng -> Ghi thêm -> Điền SL tay -> Lưu', async () => {

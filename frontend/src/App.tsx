@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import ExportButton from './components/ExportButton';
 import NameGateModal from './components/NameGateModal';
+import OnlineUsersModal from './components/OnlineUsersModal';
 import PdaScanModal from './components/PdaScanModal';
 import PresenceAvatars from './components/PresenceAvatars';
 import ReconciliationTable from './components/ReconciliationTable';
@@ -23,6 +24,7 @@ export default function App() {
   // Hiện diện realtime: bắt buộc đặt tên → avatar streaming + khóa mềm theo dòng.
   const { identity, saveName, rename } = useIdentity();
   const presence = usePresence(identity);
+  const [isOnlineUsersOpen, setIsOnlineUsersOpen] = useState(false);
 
   // Thống kê nhanh trạng thái quét (chống trùng lặp id và nhận diện chính xác tag quét trùng nhiều vị trí)
   const stats = useMemo(() => {
@@ -91,7 +93,14 @@ export default function App() {
               </span>
               <div className="leading-tight">
                 <p className="text-xs font-bold text-white">{identity.name}</p>
-                <p className="text-[10px] text-emerald-400">● Online ({presence.onlineCount})</p>
+                <button
+                  type="button"
+                  onClick={() => setIsOnlineUsersOpen(true)}
+                  className="text-left text-[10px] text-emerald-400 transition hover:text-emerald-300"
+                  aria-label={`Xem danh sách ${presence.onlineCount} người đang online`}
+                >
+                  ● Online ({presence.onlineCount})
+                </button>
               </div>
               <button
                 type="button"
@@ -212,6 +221,14 @@ export default function App() {
         systemByBatch={byBatch}
         actorName={identity?.name ?? null}
         onScanned={() => void refetch()}
+      />
+
+      <OnlineUsersModal
+        open={isOnlineUsersOpen}
+        onClose={() => setIsOnlineUsersOpen(false)}
+        currentUser={identity}
+        peers={presence.peers}
+        onlineCount={presence.onlineCount}
       />
 
       {/* Cổng đặt tên bắt buộc — avatar streaming realtime */}
