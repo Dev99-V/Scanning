@@ -129,7 +129,7 @@ describe('App layout and modal workflow', () => {
     fireEvent.change(qtyInput, { target: { value: '5' } });
     fireEvent.keyDown(qtyInput, { key: 'Enter', code: 'Enter' });
 
-    // 7. Kiểm tra hàm resolveDuplicate được gọi đúng
+    // 7. Kiểm tra hàm resolveDuplicate được gọi đúng (kèm tên người làm để ghi log)
     await waitFor(() =>
       expect(resolveDuplicate).toHaveBeenCalledWith({
         action: 'append',
@@ -138,6 +138,7 @@ describe('App layout and modal workflow', () => {
         qty: 5,
         bin: 'C4',
         stockCode: 'S1',
+        actorName: 'Tester',
       }),
     );
   });

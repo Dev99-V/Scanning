@@ -34,9 +34,11 @@ interface ReconciliationTableProps {
   onRowUpdated?: () => void;
   /** Presence realtime (khóa mềm theo dòng). Không bắt buộc để test cũ vẫn chạy. */
   presence?: UsePresenceApi | null;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
-export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, presence }: ReconciliationTableProps) {
+export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, presence, actorName }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -95,6 +97,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
         p_new_batch_id: cleanTag,
         p_stock_code: manualStockCode.trim() || null,
         p_new_qty: cleanQty,
+        ...(actorName ? { p_actor_name: actorName } : {}),
       });
       if (error || !data?.ok) {
         setEditNotice(`❌ Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
@@ -146,7 +149,10 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     setIsDeleting(true);
     setDeleteNotice(null);
     try {
-      const { data, error } = await supabase.rpc('delete_scanned_row', { p_id: deletingRow.id });
+      const { data, error } = await supabase.rpc('delete_scanned_row', {
+        p_id: deletingRow.id,
+        ...(actorName ? { p_actor_name: actorName } : {}),
+      });
       if (error || !data?.ok) {
         setDeleteNotice(`❌ Lỗi xóa: ${error?.message || data?.error || 'Không xác định'}`);
       } else {

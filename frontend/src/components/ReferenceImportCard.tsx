@@ -5,9 +5,11 @@ import { supabase } from '../lib/supabase';
 
 interface ReferenceImportCardProps {
   onImportSuccess?: () => void;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
-export default function ReferenceImportCard({ onImportSuccess }: ReferenceImportCardProps) {
+export default function ReferenceImportCard({ onImportSuccess, actorName }: ReferenceImportCardProps) {
   const [uploading, setUploading] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export default function ReferenceImportCard({ onImportSuccess }: ReferenceImport
     try {
       const formData = new FormData();
       formData.append('file', file);
+      if (actorName) formData.append('actor_name', actorName);
 
       const { data, error } = await supabase.functions.invoke('import-reference', {
         body: formData,

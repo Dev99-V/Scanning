@@ -54,6 +54,14 @@ describe('submitScan', () => {
     const r = await submitScan({ batchId: 'B1', qty: 1, bin: 'A', isManual: false });
     expect(r).toEqual({ kind: 'error', code: 'network_error', message: 'Request failed' });
   });
+
+  it('gửi kèm actor_name khi có tên người làm (ghi nhật ký)', async () => {
+    invoke.mockResolvedValue({ data: { ok: true, data: { id: 'abc', status: 'ok' } }, error: null });
+    await submitScan({ batchId: 'B1', qty: 2, bin: 'C4', isManual: false, actorName: 'Anh A' });
+    expect(invoke).toHaveBeenCalledWith('scan-submit', {
+      body: { batch_id: 'B1', qty: 2, bin: 'C4', is_manual: false, actor_name: 'Anh A' },
+    });
+  });
 });
 
 describe('resolveDuplicate', () => {
@@ -79,5 +87,16 @@ describe('resolveDuplicate', () => {
     });
     const r = await resolveDuplicate({ action: 'relocate', scannedId: 's9', batchId: 'B1', qty: 1, bin: 'A' });
     expect(r).toEqual({ kind: 'error', code: 'not_found', message: 'không tồn tại' });
+  });
+
+  it('gửi kèm actor_name khi có tên người làm (ghi nhật ký)', async () => {
+    invoke.mockResolvedValue({
+      data: { ok: true, data: { id: 'n1', status: 'duplicate', resolution: 'appended' } },
+      error: null,
+    });
+    await resolveDuplicate({ action: 'append', scannedId: 's1', batchId: 'B1', qty: 1, bin: 'A', actorName: 'Anh B' });
+    expect(invoke).toHaveBeenCalledWith('resolve-duplicate', {
+      body: { action: 'append', scanned_id: 's1', batch_id: 'B1', qty: 1, bin: 'A', actor_name: 'Anh B' },
+    });
   });
 });

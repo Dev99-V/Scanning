@@ -32,6 +32,7 @@ serve(async (req: Request) => {
   let body: {
     action?: unknown; scanned_id?: unknown; batch_id?: unknown;
     qty?: unknown; bin?: unknown; is_manual?: unknown; stock_code?: unknown;
+    actor_name?: unknown;
   };
   try {
     body = await req.json();
@@ -45,6 +46,7 @@ serve(async (req: Request) => {
   const bin = typeof body.bin === "string" ? body.bin.trim() : "";
   const isManual = body.is_manual === true;
   const stockCode = typeof body.stock_code === "string" ? body.stock_code.trim() : null;
+  const actorName = typeof body.actor_name === "string" ? body.actor_name.trim().slice(0, 50) : null;
   if (!action || !scannedId || !batchId || !Number.isFinite(qty) || !bin) {
     return json(400, {
       ok: false,
@@ -76,6 +78,7 @@ serve(async (req: Request) => {
     p_is_manual: isManual,
     p_actor: actor,
     p_stock_code: stockCode,
+    p_actor_name: actorName,
   });
   if (error) {
     if (error.message.includes("duplicate_target_not_found")) {

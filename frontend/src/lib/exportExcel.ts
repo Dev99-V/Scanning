@@ -1,8 +1,10 @@
 // exportExcel — xuất đối chiếu ra .xlsx (Plan.md §7.5, Skills B).
-// Ép text (number format '@' + dấu nháy đầu) cho cột mã để Excel không nuốt
-// số 0 đầu — đúng kỹ thuật bản prototype scantag.html. Thêm cột trạng thái
-// đối chiếu theo yêu cầu (“export kèm cột trạng thái”).
+// Ép text bằng ô chuỗi gốc (t:'s' + number format '@'), KHÔNG chèn dấu nháy
+// đầu: chuỗi lưu ở Shared Strings nên Excel luôn hiểu là text — giữ số 0 đầu,
+// không nhảy notation kiểu 19E+01, và đọc lại bằng máy ra đúng giá trị gốc.
+// (Bản cũ chèn "'" vào giá trị nên dữ liệu khó xử lý tiếp.)
 import * as XLSX from 'xlsx';
+import { actorDisplayName, describeAuditEntry, type AuditEntry } from './auditLog';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import type { ScanRow } from '../lib/types';
 
@@ -18,7 +20,7 @@ export const EXPORT_HEADER = [
 ];
 
 function textCell(v: string | number): { v: string; t: 's'; z: '@' } {
-  return { v: `'${v}`, t: 's', z: '@' };
+  return { v: String(v ?? ''), t: 's', z: '@' };
 }
 
 export function buildReconWorkbook(rows: ScanRow[], systemByBatch: Map<string, SystemNumbers>): XLSX.WorkBook {
@@ -157,5 +159,48 @@ export function download7055Excel(rows: Row7055Item[], customFileName?: string):
   const today = new Date().toISOString().slice(0, 10);
   const fileName = customFileName || `Tag in thêm 7055 ${today}.xlsx`;
   XLSX.writeFile(wb, fileName);
+}
+
+export const AUDIT_EXPORT_HEADER = ['Thời gian', 'Người làm', 'Hành động', 'Tag ID', 'Chi tiết'];
+
+export function buildAuditWorkbook(entries: AuditEntry[]): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  const data: unknown[][] = [AUDIT_EXPORT_HEADER];
+  for (const e of entries) {
+    const d = describeAuditEntry(e);
+    let timeStr = e.created_at || '';
+    if (timeStr) {
+      try {
+        const dObj = new Date(timeStr);
+        if (!isNaN(dObj.getTime())) timeStr = dObj.toLocaleString('vi-VN', { hour12: false });
+      } catch {
+        // keep raw
+      }
+    }
+    data.push([
+      textCell(timeStr),
+      textCell(actorDisplayName(e)),
+      textCell(d.actionLabel),
+      textCell(d.tagId),
+      textCell(d.detail),
+    ]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    for (let R = range.s.r + 1; R <= range.e.r; R++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c });
+      const cell = ws[addr] as { z?: string } | undefined;
+      if (cell && typeof cell === 'object') cell.z = '@';
+      else ws[addr] = { v: '', t: 's', z: '@' };
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, ws, 'NhatKyHoatDong');
+  return wb;
+}
+
+export function downloadAuditExcel(entries: AuditEntry[]): void {
+  const wb = buildAuditWorkbook(entries);
+  XLSX.writeFile(wb, `NhatKyHoatDong_${Date.now()}.xlsx`);
 }
 

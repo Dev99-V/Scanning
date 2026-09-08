@@ -42,11 +42,18 @@ serve(async (req: Request) => {
   }
 
   let buf: ArrayBuffer;
+  let fileName = "Stock Balance With Batch.xlsx";
+  let actorName: string | null = null;
   try {
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
       return json(400, { ok: false, error: { code: "missing_file", message: "Multipart field 'file' (.xlsx) is required" } });
+    }
+    if (file.name) fileName = file.name.slice(0, 200);
+    const rawActor = form.get("actor_name");
+    if (typeof rawActor === "string" && rawActor.trim()) {
+      actorName = rawActor.trim().slice(0, 50);
     }
     buf = await file.arrayBuffer();
   } catch {
@@ -174,6 +181,26 @@ serve(async (req: Request) => {
       return json(500, { ok: false, error: { code: "upsert_failed", message: error.message } });
     }
     upserted += chunk.length;
+  }
+
+  // Ghi 1 dòng nhật ký hoạt động cho lần import (hiện ở thẻ log Bảng 2).
+  // Chỉ 1 dòng tóm tắt, không ghi từng batch để khỏi phình bảng log.
+  const { error: auditErr } = await supabase.from("scan_audit_log").insert({
+    scanned_id: null,
+    action: "insert",
+    actor: null,
+    actor_name: actorName,
+    new_value: {
+      kind: "import",
+      file_name: fileName,
+      total_rows_in_file: dataRows.length,
+      upserted,
+      skipped: skipped.length,
+    },
+  });
+  if (auditErr) {
+    // Import đã thành công — thiếu dòng log không được làm fail cả lần import.
+    console.error("import audit insert failed:", auditErr.message);
   }
 
   return json(200, {

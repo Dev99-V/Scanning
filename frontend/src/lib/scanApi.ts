@@ -78,6 +78,8 @@ export async function submitScan(input: {
   bin: string;
   isManual: boolean;
   stockCode?: string | null;
+  /** Tên hiển thị (presence) để ghi nhật ký hoạt động — optional để tương thích. */
+  actorName?: string | null;
 }): Promise<ScanOutcome> {
   const reqBody: Record<string, unknown> = {
     batch_id: input.batchId,
@@ -87,6 +89,9 @@ export async function submitScan(input: {
   };
   if (input.stockCode !== undefined) {
     reqBody.stock_code = input.stockCode;
+  }
+  if (input.actorName) {
+    reqBody.actor_name = input.actorName;
   }
 
   const { data, error } = await supabase.functions.invoke('scan-submit', {
@@ -145,6 +150,8 @@ export async function resolveDuplicate(input: {
   qty: number;
   bin: string;
   stockCode?: string | null;
+  /** Tên hiển thị (presence) để ghi nhật ký hoạt động — optional để tương thích. */
+  actorName?: string | null;
 }): Promise<ResolveOutcome> {
   const reqBody: Record<string, unknown> = {
     action: input.action,
@@ -155,6 +162,9 @@ export async function resolveDuplicate(input: {
   };
   if (input.stockCode !== undefined) {
     reqBody.stock_code = input.stockCode;
+  }
+  if (input.actorName) {
+    reqBody.actor_name = input.actorName;
   }
 
   const { data, error } = await supabase.functions.invoke('resolve-duplicate', {

@@ -40,6 +40,9 @@ trap cleanup_serve EXIT
 echo "--- CHECK 1/7: migration apply sạch (idempotent) ---"
 docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$REPO_BACKEND/supabase/migrations/20260904070945_scan_submit_rpc.sql" > /dev/null || fail "migration apply failed"
 docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$REPO_BACKEND/supabase/migrations/20260904091500_add_stock_code_to_scanned_data.sql" > /dev/null || fail "latest migration apply failed"
+# Nạp tiếp migration mới nhất (actor_name/audit) để DB local sau gate vẫn ở bản RPC mới nhất,
+# vì 2 file gốc ở trên sẽ ghi đè các overload cũ nếu chạy riêng lẻ.
+docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$REPO_BACKEND/supabase/migrations/20260909091000_activity_log.sql" > /dev/null || fail "activity_log migration apply failed"
 pass "migration"
 
 echo "--- CHECK 2/7: invalid input -> invalid_input ---"

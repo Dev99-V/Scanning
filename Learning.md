@@ -28,6 +28,30 @@
 
 ## Nhật ký
 
+### [2026-09-08] Bảng Nhật ký hoạt động realtime + export Excel text thuần không nháy đầu
+
+- **Khu vực**: RPC audit (`20260909091000_activity_log.sql`), Edge Functions (`scan-submit`, `resolve-duplicate`, `import-reference`), Frontend (`ActivityLogCard`, `useAuditLog`, `auditLog.ts`, `exportExcel.ts`, luồn `actorName` khắp App)
+- **Triệu chứng & Yêu cầu người dùng**:
+  1. Muốn 1 bảng log ở frontend (chung khu thẻ Bảng 2) hiện "tên ai làm gì": quét PDA / thêm mã nguồn / sửa SL-Bin nguồn / sửa-xóa lượt quét, có filter tìm kiếm + export Excel.
+  2. File Excel export ra bị dính `'` ở đầu ô → khó xử lý tiếp; yêu cầu text thuần nhưng không nhảy notation (`19E01` → `19E+01`) và giữ số 0 đầu.
+- **Nguyên nhân gốc**:
+  1. `auth.uid()/actor` luôn NULL vì hệ thống bỏ đăng nhập (anon) → log không biết tên ai. Thiếu audit: `add_reference_stock`, `update_reference_qty/bin`, `delete_scanned_row` không ghi log; `scan_audit_log` không nằm trong publication realtime.
+  2. `textCell()` chèn `'` vào GIÁ TRỊ chuỗi (`'000...` lưu luôn vào Shared Strings) thay vì chỉ ép kiểu ô — đọc lại bằng máy ra kèm nháy.
+  3. Phát hiện thêm khi làm: migration `20260909090000` chép `add_reference_stock` từ bản cũ nên LÀM MẤT logic giữ status `duplicate` của `20260907044500` (đã khôi phục trong migration mới, verify còn giữ `duplicate`).
+- **Cách sửa**:
+  1. DB: `actor_name text` + publication `scan_audit_log`; 7 RPC nhận thêm `p_actor_name` OPTIONAL (drop overload cũ → tạo mới để PostgREST không phân vân); `delete_scanned_row` ghi audit `delete`; `update_reference_qty/bin` ghi audit `edit` (đảo quyết định cũ "không ghi log" theo yêu cầu mới); `add_reference_stock` = lock + duplicate-giữ + audit `insert`. Edge Functions chuyển tiếp `actor_name` (slice 50); `import-reference` ghi 1 dòng tóm tắt/lần import.
+  2. Frontend: `auditLog.ts` (mô tả VN theo `kind`+`action`), `useAuditLog` (300 dòng mới nhất + realtime INSERT dedupe, trần 500), `ActivityLogCard` full-width dưới 3 thẻ Bảng 2 (filter tên/hành động/Tag + export + cuộn 100 dòng); `actorName={identity?.name}` luồn từ App xuống mọi luồng ghi (chỉ gửi khi có tên nên test cũ không vỡ).
+  3. Export: `textCell` lưu chuỗi gốc `t:'s' + z:'@'` (Shared Strings luôn là text → giữ số 0, không nhảy E+); thêm `buildAuditWorkbook/downloadAuditExcel`.
+- **Bằng chứng đã hết lỗi**:
+  - DB local thật: add/quét/sửa-SL/xóa ghi đủ audit kèm tên (Anh A/B/C/D); 8 thêm cùng Tag song song → 1 ok + 7 `duplicate_batch_id`; thêm nguồn khi đã quét trùng 2 lần → giữ `duplicate`; hồi quy đủ nhánh RPC; DB dọn sạch (2721/0/0); publication đủ 3 bảng; mỗi RPC chỉ còn đúng overload mới.
+  - Frontend: `tsc` sạch, `oxlint` 0 warning, `vitest` 23 files 105/105 PASS (mới: auditLog/useAuditLog/ActivityLogCard/scanApi-actor/export-audit/19E01), `vite build` OK.
+  - Gates: QC Phase 1/3/4/5/6 PASS (Phase 3 chạy với Edge serve tay vì edge_runtime container local đang stopped — vấn đề môi trường, đã note; đồng thời sửa gate tự nạp tiếp migration mới để DB sau gate không lùi RPC).
+- **Cách phòng tránh lần sau**:
+  - Migration full-replace RPC phải chép từ bản MỚI NHẤT (kiểm tra mọi migration chạm cùng function), không chép từ bản đầu.
+  - Ép text Excel = kiểu ô + format, không bao giờ chèn ký tự vào giá trị.
+  - Test dùng `mockReturnValueOnce` cho query sẽ bị hook mới "cướp" lượt — dùng `mockResolvedValue` khi component chứa nhiều consumer.
+- **Liên quan**: Plan.md §4/§5/§7; Skills A/B/C; `state.json:pending_contract_changes` (params mới đều optional → tương thích ngược; deploy backend trước là an toàn tuyệt đối).
+
 ### [2026-09-09] Bịt race 2 người thêm cùng Tag nguồn (advisory lock) + đánh giá đề xuất cắt audit log ở 1000 dòng
 
 - **Khu vực**: RPC `add_reference_stock` (migration `20260909090000_add_reference_stock_advisory_lock.sql`), Frontend `ReferenceAddCard.tsx` (giữ nguyên)

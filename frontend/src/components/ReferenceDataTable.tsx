@@ -7,6 +7,7 @@ import type { UsePresenceApi } from '../hooks/usePresence';
 import { table2RowKey } from '../hooks/presenceHelpers';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
+import ActivityLogCard from './ActivityLogCard';
 import ReferenceAddCard from './ReferenceAddCard';
 import ReferenceImportCard from './ReferenceImportCard';
 import Reference7055Card from './Reference7055Card';
@@ -32,6 +33,8 @@ interface ReferenceDataTableProps {
   presence?: UsePresenceApi | null;
   /** Dải avatar streaming do App truyền xuống (đã lọc theo Bảng 2). */
   presenceHeader?: React.ReactNode;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
 export default function ReferenceDataTable({
@@ -41,6 +44,7 @@ export default function ReferenceDataTable({
   onReferenceAdded,
   presence,
   presenceHeader,
+  actorName,
 }: ReferenceDataTableProps = {}) {
   const [rows, setRows] = useState<ReferenceLine[]>([]);
   const [smartFilter, setSmartFilter] = useState('');
@@ -240,6 +244,7 @@ export default function ReferenceDataTable({
       const { data, error } = await supabase.rpc('update_reference_bin', {
         p_batch_id: editingBinRow.batch_id,
         p_new_bin: cleanBin,
+        ...(actorName ? { p_actor_name: actorName } : {}),
       });
       if (error || !data?.ok) {
         setEditBinError(`Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
@@ -308,6 +313,7 @@ export default function ReferenceDataTable({
       const { data, error } = await supabase.rpc('update_reference_qty', {
         p_batch_id: editingRow.batch_id,
         p_new_qty: newQ,
+        ...(actorName ? { p_actor_name: actorName } : {}),
       });
       if (error || !data?.ok) {
         setEditError(`Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
@@ -494,15 +500,23 @@ export default function ReferenceDataTable({
     <section aria-label="Dữ liệu hệ thống" className="flex flex-col gap-4">
       {/* Khu vực thẻ hoạt động Bảng 2: Import file nguồn & Thêm dữ liệu nguồn mới & Tag in thêm 7055 */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <ReferenceImportCard onImportSuccess={() => setRefreshTrigger((prev) => prev + 1)} />
+        <ReferenceImportCard
+          actorName={actorName}
+          onImportSuccess={() => setRefreshTrigger((prev) => prev + 1)}
+        />
         <ReferenceAddCard
           existingRows={rows}
+          actorName={actorName}
           onAddSuccess={(newRow) => {
             setRows((prev) => [newRow, ...prev]);
             onReferenceAdded?.(newRow);
           }}
         />
         <Reference7055Card rows7055={rows7055} />
+        {/* Nhật ký hoạt động: full-width ngay dưới các thẻ, chung khu vực thẻ Bảng 2 */}
+        <div className="md:col-span-2 xl:col-span-3">
+          <ActivityLogCard />
+        </div>
       </div>
 
       {/* Bảng dữ liệu nguồn tra cứu */}

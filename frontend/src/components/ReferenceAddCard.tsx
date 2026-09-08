@@ -11,9 +11,11 @@ import type { ReferenceLine } from './ReferenceDataTable';
 interface ReferenceAddCardProps {
   existingRows: ReferenceLine[];
   onAddSuccess?: (newRow: ReferenceLine) => void;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
-export default function ReferenceAddCard({ existingRows, onAddSuccess }: ReferenceAddCardProps) {
+export default function ReferenceAddCard({ existingRows, onAddSuccess, actorName }: ReferenceAddCardProps) {
   const [stockCode, setStockCode] = useState('');
   const [batchId, setBatchId] = useState('');
   const [warehouse, setWarehouse] = useState('');
@@ -126,6 +128,7 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess }: Referen
         p_create_date: new Date(`${createDate}T00:00:00Z`).toISOString(),
         p_overwrite: overwrite,
         p_tag_7055: is7055,
+        ...(actorName ? { p_actor_name: actorName } : {}),
       });
 
       if (error) {

@@ -170,6 +170,7 @@ export default function App() {
           rows={rows}
           systemByBatch={byBatch}
           presence={presence}
+          actorName={identity?.name ?? null}
           onRowDeleted={() => void refetch()}
           onRowUpdated={() => void refetch()}
         />
@@ -185,6 +186,7 @@ export default function App() {
           scannedRows={rows}
           presence={presence}
           presenceHeader={<PresenceAvatars users={presence.viewersOfTable('table2')} tableLabel="Bảng 2" />}
+          actorName={identity?.name ?? null}
           onQtyUpdated={updateBatchQty}
           onBinUpdated={(batchId, newBin) => {
             updateBatchBin(batchId, newBin);
@@ -208,6 +210,7 @@ export default function App() {
         onClose={() => setIsScanModalOpen(false)}
         rows={rows}
         systemByBatch={byBatch}
+        actorName={identity?.name ?? null}
         onScanned={() => void refetch()}
       />
 

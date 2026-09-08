@@ -398,8 +398,10 @@ describe('ReferenceDataTable', () => {
   });
 
   it('hiển thị badge 🏷️ 7055 bên cạnh Tag ID khi dòng có tag_7055=true', async () => {
-    range.mockReturnValueOnce(
-      Promise.resolve({
+    // Ghi đè cho MỌI cuộc gọi range trong test này (cả fetch Bảng 2 lẫn fetch
+    // log của ActivityLogCard) — dùng Once sẽ bị hook log "cướp" mất lượt đầu.
+    range.mockResolvedValue(
+      {
         data: [
           {
             batch_id: 'TAG001',
@@ -413,7 +415,7 @@ describe('ReferenceDataTable', () => {
           },
         ],
         error: null,
-      }),
+      },
     );
 
     render(<ReferenceDataTable />);

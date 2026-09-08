@@ -15,9 +15,11 @@ export const WAITING_BIN = 'WAITING...';
 interface PdaScanPanelProps {
   onScanned: (result: ScanSuccess) => void;
   onDuplicate: (conflict: DuplicateConflict) => void;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
-export default function PdaScanPanel({ onScanned, onDuplicate }: PdaScanPanelProps) {
+export default function PdaScanPanel({ onScanned, onDuplicate, actorName }: PdaScanPanelProps) {
   const [mode, setMode] = useState<Mode>('location');
   const [activeBin, setActiveBin] = useState<string>(WAITING_BIN);
   const [value, setValue] = useState('');
@@ -48,7 +50,13 @@ export default function PdaScanPanel({ onScanned, onDuplicate }: PdaScanPanelPro
     setBusy(true);
     setNotice(null);
     try {
-      const outcome = await submitScan({ batchId: text, qty, bin: activeBin, isManual: false });
+      const outcome = await submitScan({
+        batchId: text,
+        qty,
+        bin: activeBin,
+        isManual: false,
+        ...(actorName ? { actorName } : {}),
+      });
       if (outcome.kind === 'scanned') {
         onScanned(outcome.result);
         setValue('');

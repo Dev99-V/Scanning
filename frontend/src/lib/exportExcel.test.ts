@@ -21,19 +21,31 @@ describe('buildReconWorkbook', () => {
     expect(data[2][6]).toBe('bin_mismatch');
   });
 
-  it('ép text: dấu nháy đầu + number format @ để giữ số 0 đầu', () => {
+  it('ép text KHÔNG nháy đầu: chuỗi gốc + number format @, giữ số 0 và chống nhảy E+', () => {
     const wb = buildReconWorkbook(rows, sys);
     const ws = wb.Sheets['DoiChieu'];
-    const tagCell = ws['B2'] as { v: string; z: string };
-    expect(tagCell.v).toBe("'000012340001");
+    const tagCell = ws['B2'] as { v: string; t: string; z: string };
+    expect(tagCell.v).toBe('000012340001');
+    expect(tagCell.t).toBe('s');
     expect(tagCell.z).toBe('@');
     const qtyCell = ws['C2'] as { z: string };
     expect(qtyCell.z).toBe('@');
-    // Đọc lại bằng Excel engine: text giữ nguyên (không mất số 0 đầu khi mở file)
+    // Round-trip qua file xlsx thật: text giữ nguyên, không mất số 0, không dính nháy
     const buf: ArrayBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
     const wb2 = XLSX.read(buf, { type: 'array' });
     const data2 = XLSX.utils.sheet_to_json(wb2.Sheets['DoiChieu'], { header: 1, raw: false }) as unknown[][];
-    expect(String(data2[1][1])).toContain('000012340001');
+    expect(String(data2[1][1])).toBe('000012340001');
+  });
+
+  it('chuỗi dạng số mũ (19E01) không bị biến thành notation hình học', () => {
+    const tricky: ScanRow[] = [
+      { id: 'e1', batch_id: '19E01', qty: 1, bin: 'C4', status: 'not_in_reference', resolution: null, is_manual: false, scanned_at: '2026-09-04T00:00:00Z' },
+    ];
+    const wb = buildReconWorkbook(tricky, new Map());
+    const buf: ArrayBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    const wb2 = XLSX.read(buf, { type: 'array' });
+    const data2 = XLSX.utils.sheet_to_json(wb2.Sheets['DoiChieu'], { header: 1, raw: false }) as unknown[][];
+    expect(String(data2[1][1])).toBe('19E01');
   });
 
   it('batch không có trong hệ thống -> ô hệ thống trống', () => {
@@ -70,9 +82,28 @@ describe('buildReconWorkbook', () => {
     ]);
     expect(data).toHaveLength(2);
 
-    // Tag ID giữ số 0 đầu với dấu nháy
-    const tagCell = ws['B2'] as { v: string; z: string };
-    expect(tagCell.v).toBe("'000070550001");
+    // Tag ID giữ số 0 đầu ở dạng text thuần (không nháy đầu)
+    const tagCell = ws['B2'] as { v: string; t: string; z: string };
+    expect(tagCell.v).toBe('000070550001');
+    expect(tagCell.t).toBe('s');
     expect(tagCell.z).toBe('@');
+  });
+
+  it('buildAuditWorkbook xuất nhật ký text thuần kèm tên người làm', async () => {
+    const { AUDIT_EXPORT_HEADER, buildAuditWorkbook } = await import('./exportExcel');
+    const wb = buildAuditWorkbook([
+      { id: 1, scanned_id: 's1', action: 'insert', old_value: null, new_value: { batch_id: '000012340001', qty: 5, bin: 'C4', status: 'ok' }, actor: null, actor_name: 'Anh A', created_at: '2026-09-08T01:00:00Z' },
+      { id: 2, scanned_id: null, action: 'insert', old_value: null, new_value: { kind: 'import', file_name: 'Stock.xlsx', total_rows_in_file: 100, upserted: 90, skipped: 10 }, actor: null, actor_name: null, created_at: '2026-09-08T02:00:00Z' },
+    ]);
+    const ws = wb.Sheets['NhatKyHoatDong'];
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as unknown[][];
+    expect(data[0]).toEqual(AUDIT_EXPORT_HEADER);
+    expect(data).toHaveLength(3);
+    // Không dính nháy đầu, tên người làm đúng
+    expect(data[1][1]).toBe('Anh A');
+    expect(data[1][2]).toBe('Quét PDA');
+    expect(data[1][3]).toBe('000012340001');
+    expect(data[2][1]).toBe('Ẩn danh');
+    expect(data[2][2]).toBe('Import file nguồn');
   });
 });

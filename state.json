@@ -65,6 +65,12 @@
       "detail": "Migration 20260909090000_add_reference_stock_advisory_lock.sql: add_reference_stock lấy pg_advisory_xact_lock chung namespace scan_submit theo batch trước SELECT. Không đổi params/returns nên frontend giữ nguyên. Cần supabase db push lên cloud (CI backend-deploy khi merge main).",
       "status": "pending_cloud_apply",
       "date": "2026-09-09"
+    },
+    {
+      "type": "activity_log_additive",
+      "detail": "Migration 20260909091000: actor_name + audit đủ (add/sửa nguồn/xóa quét) + realtime scan_audit_log; 7 RPC thêm p_actor_name OPTIONAL; Edge scan/resolve/import chuyển tiếp actor_name. Tương thích ngược (frontend cũ chạy được); deploy backend trước là an toàn tuyệt đối. Cần supabase db push + functions deploy lên cloud.",
+      "status": "pending_cloud_apply",
+      "date": "2026-09-08"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {
@@ -140,5 +146,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-09 (bịt race thêm nguồn): add_reference_stock đã có advisory lock chung namespace scan_submit; verify local 10-way cùng Tag → 1 ok + 9 duplicate_batch_id, hồi quy đủ nhánh, DB local sạch (2721/0/0). Audit log: đo ~176 bytes/dòng (689 dòng ≈120KB) nên KHUYẾN NGHỊ KHÔNG tự xóa ở 1000 dòng — chờ user chốt. Còn lại: merge main để CI push 2 migration (realtime Bảng 2 + lock) lên cloud."
+  "notes_for_next_session": "2026-09-08 (nhật ký hoạt động + fix export): thẻ log realtime full-width dưới 3 thẻ Bảng 2 (filter + export), audit đủ quét/thêm/sửa/xóa kèm tên, export text thuần hết dính nháy (giữ số 0, chống nhảy E+). Verify: vitest 105/105, build OK, QC1/3/4/5/6 PASS, DB local sạch 2721/0/0. Còn lại: push main để CI push migration + deploy functions + Pages."
 }

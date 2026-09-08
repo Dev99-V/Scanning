@@ -25,6 +25,8 @@ interface PdaScanModalProps {
   rows: ScanRow[];
   systemByBatch: Map<string, SystemNumbers>;
   onScanned?: () => void;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
 export default function PdaScanModal({
@@ -33,6 +35,7 @@ export default function PdaScanModal({
   rows,
   systemByBatch,
   onScanned,
+  actorName,
 }: PdaScanModalProps) {
   const [mode, setMode] = useState<'location' | 'tag'>('location');
   const [activeBin, setActiveBin] = useState<string>(WAITING_BIN);
@@ -184,6 +187,7 @@ export default function PdaScanModal({
           qty: qVal,
           bin: activeBin,
           stockCode: finalStockCode,
+          ...(actorName ? { actorName } : {}),
         });
 
         if (res.kind === 'resolved') {
@@ -201,6 +205,7 @@ export default function PdaScanModal({
           bin: activeBin,
           isManual: false,
           stockCode: finalStockCode,
+          ...(actorName ? { actorName } : {}),
         });
 
         if (outcome.kind === 'scanned') {

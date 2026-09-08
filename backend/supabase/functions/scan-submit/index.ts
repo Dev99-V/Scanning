@@ -30,7 +30,7 @@ serve(async (req: Request) => {
     return json(500, { ok: false, error: { code: "server_misconfigured", message: "Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY" } });
   }
 
-  let body: { batch_id?: unknown; qty?: unknown; bin?: unknown; is_manual?: unknown; stock_code?: unknown };
+  let body: { batch_id?: unknown; qty?: unknown; bin?: unknown; is_manual?: unknown; stock_code?: unknown; actor_name?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -41,6 +41,7 @@ serve(async (req: Request) => {
   const bin = typeof body.bin === "string" ? body.bin.trim() : "";
   const isManual = body.is_manual === true;
   const stockCode = typeof body.stock_code === "string" ? body.stock_code.trim() : null;
+  const actorName = typeof body.actor_name === "string" ? body.actor_name.trim().slice(0, 50) : null;
   if (!batchId || !Number.isFinite(qty) || !bin) {
     return json(400, {
       ok: false,
@@ -67,6 +68,7 @@ serve(async (req: Request) => {
     p_is_manual: isManual,
     p_scanned_by: scannedBy,
     p_stock_code: stockCode,
+    p_actor_name: actorName,
   });
   if (error) {
     return json(500, { ok: false, error: { code: "internal", message: error.message } });

@@ -6,9 +6,11 @@ import { submitScan, type DuplicateConflict, type ScanSuccess } from '../lib/sca
 interface ManualEntryFormProps {
   onScanned: (result: ScanSuccess) => void;
   onDuplicate: (conflict: DuplicateConflict) => void;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
-export default function ManualEntryForm({ onScanned, onDuplicate }: ManualEntryFormProps) {
+export default function ManualEntryForm({ onScanned, onDuplicate, actorName }: ManualEntryFormProps) {
   const [batchId, setBatchId] = useState('');
   const [bin, setBin] = useState('');
   const [qty, setQty] = useState(1);
@@ -26,7 +28,13 @@ export default function ManualEntryForm({ onScanned, onDuplicate }: ManualEntryF
     setBusy(true);
     setNotice(null);
     try {
-      const outcome = await submitScan({ batchId: b, qty, bin: bn, isManual: true });
+      const outcome = await submitScan({
+        batchId: b,
+        qty,
+        bin: bn,
+        isManual: true,
+        ...(actorName ? { actorName } : {}),
+      });
       if (outcome.kind === 'scanned') {
         onScanned(outcome.result);
         setBatchId('');
