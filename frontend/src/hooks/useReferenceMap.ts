@@ -22,9 +22,13 @@ export function useReferenceMap() {
       const step = 1000;
       let from = 0;
       while (true) {
+        // Sort ỔN ĐỊNH theo PK: trước đây không có ORDER BY nào nên thứ tự trang
+        // hoàn toàn tùy ý -> trùng/thiếu dòng khi bảng > 1000 dòng (lỗi Bảng 2
+        // stock 3428460401: trùng 1 tag + thiếu 1 tag, im lặng).
         const { data, error } = await supabase
           .from('reference_stock')
           .select('batch_id,stock_code,bin,qty,tag_7055')
+          .order('batch_id', { ascending: true })
           .range(from, from + step - 1);
         if (error || !data || data.length === 0) break;
         for (const r of data as ReferenceRow[]) {

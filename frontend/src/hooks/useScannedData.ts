@@ -19,7 +19,10 @@ export function useScannedData() {
         const q = supabase
           .from('scanned_data')
           .select('id,batch_id,qty,bin,status,resolution,is_manual,scanned_at,stock_code')
-          .order('scanned_at', { ascending: false });
+          // Tie-breaker id (PK unique): scanned_at có thể trùng nhau khi ghi
+          // đồng thời -> cùng lớp lỗi phân trang OFFSET như Bảng 2.
+          .order('scanned_at', { ascending: false })
+          .order('id', { ascending: false });
 
         const res = await (q.range ? q.range(from, from + step - 1) : (q.limit ? q.limit(step) : q));
         const data = res?.data;

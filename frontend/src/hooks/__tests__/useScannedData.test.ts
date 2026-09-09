@@ -26,7 +26,8 @@ let handler: Handler = () => {};
 beforeEach(() => {
   vi.clearAllMocks();
   select.mockReturnValue({ order });
-  order.mockReturnValue({ range, limit });
+  // order trả về chính nó để chuỗi .order().order() (tie-breaker id) chạy được.
+  order.mockReturnValue({ order, range, limit });
   range.mockImplementation(async () => ({ data: [{ id: 'a', batch_id: 'B1' }], error: null }));
   limit.mockImplementation(async () => ({ data: [{ id: 'a', batch_id: 'B1' }], error: null }));
   on.mockImplementation((_ev: string, _filter: unknown, h: Handler) => {
@@ -83,6 +84,14 @@ describe('useScannedData', () => {
     // Không bị nhân đôi thành ['dup1', 'dup1', 'a'] mà vẫn là 1 dòng duy nhất được cập nhật
     expect(result.current.rows.map((r) => r.id)).toEqual(['dup1', 'a']);
     expect(result.current.rows.find((r) => r.id === 'dup1')?.batch_id).toBe('TAG_DUP_UPDATED');
+  });
+
+  it('order tie-breaker id sau scanned_at để phân trang OFFSET ổn định', async () => {
+    const { result } = renderHook(() => useScannedData());
+    await act(async () => {});
+    expect(order).toHaveBeenCalledWith('scanned_at', expect.objectContaining({ ascending: false }));
+    expect(order).toHaveBeenCalledWith('id', expect.objectContaining({ ascending: false }));
+    expect(result.current.rows).toEqual([{ id: 'a', batch_id: 'B1' }]);
   });
 
   it('tải đầy đủ dữ liệu qua phân trang range không bị giới hạn 500 dòng (ví dụ 1050 dòng)', async () => {

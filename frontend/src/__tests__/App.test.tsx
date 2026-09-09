@@ -9,24 +9,27 @@ const { submitScan, resolveDuplicate } = vi.hoisted(() => ({
   resolveDuplicate: vi.fn(),
 }));
 vi.mock('../lib/scanApi', () => ({ submitScan, resolveDuplicate }));
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({
-        order: () => ({
-          limit: () => ({
-            eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }),
-            then: (res: (v: unknown) => void) => Promise.resolve({ data: [], error: null }).then(res),
-          }),
-          range: () => Promise.resolve({ data: [], error: null }),
-        }),
-      }),
+vi.mock('../lib/supabase', () => {
+  // order chainable: .order().order() (sort ổn định Bảng 2 / Bảng 1) vẫn chạy được.
+  const orderChain: () => unknown = () => ({
+    order: orderChain,
+    limit: () => ({
+      eq: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }),
+      then: (res: (v: unknown) => void) => Promise.resolve({ data: [], error: null }).then(res),
     }),
-    channel: () => ({ on: () => ({ subscribe: () => ({}) }) }),
-    removeChannel: () => Promise.resolve(),
-    rpc: () => Promise.resolve({ data: { ok: true }, error: null }),
-  },
-}));
+    range: () => Promise.resolve({ data: [], error: null }),
+  });
+  return {
+    supabase: {
+      from: () => ({
+        select: () => ({ order: orderChain }),
+      }),
+      channel: () => ({ on: () => ({ subscribe: () => ({}) }) }),
+      removeChannel: () => Promise.resolve(),
+      rpc: () => Promise.resolve({ data: { ok: true }, error: null }),
+    },
+  };
+});
 
 const mockExistingRow: ScanRow = {
   id: 'e1',

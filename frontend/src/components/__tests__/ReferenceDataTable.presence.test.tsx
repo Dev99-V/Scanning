@@ -47,7 +47,7 @@ function presenceStub(locked: boolean): UsePresenceApi {
 beforeEach(() => {
   vi.clearAllMocks();
   select.mockReturnValue({ order });
-  order.mockReturnValue({ range });
+  order.mockReturnValue({ order, range });
   range.mockResolvedValue({ data: ROWS, error: null });
   rpc.mockResolvedValue({ data: { ok: true }, error: null });
   chanOn.mockReturnValue({ subscribe: chanSubscribe });

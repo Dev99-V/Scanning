@@ -38,7 +38,8 @@ function thenable() {
 beforeEach(() => {
   vi.clearAllMocks();
   select.mockReturnValue({ order });
-  order.mockReturnValue({ range, eq });
+  // order trả về chính nó để chuỗi .order().order() (sort ổn định) chạy được trong test.
+  order.mockReturnValue({ order, range, eq });
   range.mockReturnValue(Promise.resolve({ data: ROWS, error: null }));
   eq.mockImplementation(() => ({ range, eq, thenable: thenable() }));
   rpc.mockResolvedValue({ data: { ok: true }, error: null });
@@ -547,6 +548,55 @@ describe('ReferenceDataTable', () => {
 
     // Header badge TRÙNG QUÉT: 1 DÒNG
     expect(screen.getByTestId('ref-duplicate-badge')).toHaveTextContent(/TRÙNG QUÉT: 1 DÒNG/i);
+  });
+
+  it('hồi quy stock 3428460401: sort ổn định + khử trùng batch_id qua biên trang (đủ 4/4, không trùng im lặng)', async () => {
+    const STOCK = '3428460401';
+    const mk = (batch: string) => ({
+      batch_id: batch,
+      stock_code: STOCK,
+      warehouse: '01',
+      bin: 'B1',
+      qty: 10,
+      previous_qty: null,
+      create_date: null as string | null,
+    });
+    const rowA = mk('100006070357');
+    const rowB = mk('100006070358');
+    const rowC = mk('199900013990');
+    const rowD = mk('999900003032');
+    const fillers = Array.from({ length: 999 }, (_, i) => ({
+      batch_id: `FILLER${String(i).padStart(4, '0')}`,
+      stock_code: 'FILLER',
+      warehouse: '01',
+      bin: 'B9',
+      qty: 1,
+      previous_qty: null,
+      create_date: null as string | null,
+    }));
+    // Trang 1 đủ 1000 dòng nên vòng lặp fetch tiếp trang 2; trang 2 trả trùng
+    // rowA (dư do lệch OFFSET khi có ghi đồng thời giữa 2 lần fetch).
+    // ActivityLogCard gọi range(0,299) -> trả [] để log trống, không ảnh hưởng.
+    range.mockImplementation(async (from: number, to: number) => {
+      if (from === 0 && to === 999) return { data: [...fillers, rowA], error: null };
+      if (from === 1000) return { data: [rowA, rowB, rowC, rowD], error: null };
+      return { data: [], error: null };
+    });
+
+    render(<ReferenceDataTable />);
+    // Sort ổn định: luôn order tie-breaker batch_id (PK) sau stock_code.
+    await waitFor(() =>
+      expect(order).toHaveBeenCalledWith('batch_id', expect.objectContaining({ ascending: true })),
+    );
+
+    // Lọc đúng stock user báo lỗi.
+    const smartInput = screen.getByLabelText('Tìm kiếm thông minh');
+    fireEvent.change(smartInput, { target: { value: STOCK } });
+
+    // Đủ 4 tag, mỗi tag đúng 1 dòng — không trùng im lặng, không thiếu.
+    for (const tag of ['100006070357', '100006070358', '199900013990', '999900003032']) {
+      expect(screen.getAllByText(tag)).toHaveLength(1);
+    }
   });
 });
 

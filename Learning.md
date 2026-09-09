@@ -505,3 +505,28 @@
   - Tuyệt đối không hardcode `.limit()` cố định cho các collection dữ liệu nghiệp vụ tăng trưởng theo thời gian như bảng quét `scanned_data`. Luôn dùng cơ chế phân trang `.range()` hoặc streaming để đọc toàn vẹn dữ liệu từ DB.
   - Luôn `.trim()` các khóa nghiệp vụ dạng chuỗi (như `batch_id`, `bin`) ở các tầng nhận dữ liệu, tránh sai lệch do khoảng trắng vô hình.
 
+### [2026-09-09] Bảng 2 render thiếu 1 tag + trùng 1 tag im lặng do phân trang OFFSET thiếu sort ổn định (stock 3428460401)
+
+- **Khu vực**: Tầng tải Bảng 2 (`ReferenceDataTable.tsx` `load()`, `useReferenceMap.ts` `load()`), cùng lớp với Bảng 1 (`useScannedData.ts`).
+- **Triệu chứng**: Stock `3428460401` có 4 tag trong Supabase (`100006070357`, `100006070358`, `199900013990`, `999900003032`) nhưng Bảng 2 chỉ render 3 tag, trong đó `199900013990` xuất hiện 2 lần, `100006070357` biến mất — không badge trùng, không lỗi, render sai im lặng (cực nguy hiểm vì DB có PK nên không bao giờ chứa trùng `batch_id`; trùng chỉ có thể sinh ra ở client).
+- **Nguyên nhân gốc** (đã cô lập, không sửa mò):
+  1. `ReferenceDataTable` phân trang `.range()` với duy nhất `.order('stock_code')` — cột KHÔNG unique; `useReferenceMap` phân trang mà KHÔNG có `.order()` nào. SQL không đảm bảo thứ tự các dòng đồng hạng (ties) giữa 2 query trang riêng biệt, và ghi đồng thời giữa 2 lần fetch trang còn làm lệch OFFSET. Khi nhóm ties straddle biên trang (1000/2000/...), trang sau có thể trả lại dòng trang trước đã có (trùng) và đẩy 1 dòng khác ra ngoài (thiếu) — đúng cặp triệu chứng quan sát được.
+  2. `all.push(...page)` không khử trùng theo PK nên mảng `rows` chứa trùng `batch_id` nguyên si.
+  3. Key React `key={`${batch_id}-${i}`}` gắn hậu tố index nên React không cảnh báo trùng key — lỗi thành im lặng tuyệt đối.
+  4. Tái hiện xác định bằng script mô phỏng `/tmp/opencode/repro_table2_pagination.mjs`: ORDER BY không unique + ties straddle biên trang cho ra `trùng 100006070357 + thiếu 199900013990` (cặp cụ thể nào trùng/thiếu là tùy ý theo SQL — phía user là `trùng 199900013990 + thiếu 100006070357`, cùng một cơ chế), còn `ORDER BY stock_code, batch_id` cho đủ 4/4.
+- **Cách sửa**:
+  1. `ReferenceDataTable.tsx`: `.order('stock_code').order('batch_id')` (PK tie-breaker, giữ nguyên thứ tự hiển thị cũ) + khử trùng phòng thủ theo `batch_id` trim sau vòng lặp (giữ dòng đầu, `console.warn` số dòng loại bỏ) + key React ổn định `key={cleanBatch || `row-${i}`}` để trùng thật (nếu còn) lộ qua cảnh báo React thay vì render im lặng.
+  2. `useReferenceMap.ts`: thêm `.order('batch_id')` (Map sẵn khử trùng nhưng trước đây thiếu order nên vẫn có thể thiếu dòng).
+  3. `useScannedData.ts` (rà soát lỗi tương tự): `.order('scanned_at').order('id')` vì `scanned_at` cũng có thể trùng khi ghi đồng thời; dedup theo `id` đã có từ trước nên giữ nguyên.
+  4. `useAuditLog.ts` kiểm tra an toàn: 1 trang duy nhất `.range(0,299)` + `.order('id')` (PK unique) nên không thuộc lớp lỗi này — không sửa.
+  5. Cập nhật mọi mock supabase trong test cho chain `.order()` được (`App.test`, `ReferenceDataTable.test`, `presence.test`, `useReferenceMap.test`, `useScannedData.test`).
+- **Bằng chứng đã hết lỗi**:
+  - Script tái hiện: `node /tmp/opencode/repro_table2_pagination.mjs` → `REPRO: OK` (cơ chế cũ trùng+thiếu) và `FIX: OK` (sort ổn định đủ 4/4).
+  - `npx tsc -b` exit 0; `npm run lint` 0 warning; `npx vitest run` 25 files 119/119 PASS (116 cũ + 3 hồi quy mới: đủ 4 tag stock 3428460401 mỗi tag đúng 1 dòng khi trang 2 trả trùng; `useReferenceMap` order PK + gộp trang không trùng key; `useScannedData` tie-breaker id); `npm run build` OK.
+  - Gates: `frontend/tests/qc_phase4.sh`, `qc_phase5.sh`, `qc_phase6.sh` đều `RESULT: QC_PHASEn PASS`.
+- **Cách phòng tránh lần sau**:
+  - MỌI vòng lặp `.range()` phân trang OFFSET bắt buộc phải có ORDER BY tổng toàn phần (total order) kết thúc bằng PK unique (`batch_id`/`id`); ORDER BY cột không unique hoặc không ORDER BY là lỗi nghiêm trọng, không phải style.
+  - Sau vòng lặp phân trang luôn khử trùng theo PK (phòng ghi đồng thời làm lệch OFFSET giữa 2 lần fetch) và key React phải là PK trần (không hậu tố index) để trùng lặp không bao giờ im lặng.
+  - Họ lỗi này đã gặp 2 lần (limit-500 ngày 07/09 + unstable-sort ngày 09/09): mọi báo cáo "Bảng thiếu dòng / thừa dòng" phải nghi tầng fetch-phân trang trước tiên, đối chiếu row-count DB vs `rows.length` trước khi đụng tới UI.
+- **Liên quan**: Plan.md §7.3 (Bảng 2), §9 Phase 6; Skills B/C; entry limit-500 ngày 2026-09-07 ở trên (cùng họ lỗi silent-fetch).
+

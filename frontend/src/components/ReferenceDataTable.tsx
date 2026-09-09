@@ -344,10 +344,15 @@ export default function ReferenceDataTable({
       let from = 0;
       const all: ReferenceLine[] = [];
       while (!cancelled) {
+        // Sort ỔN ĐỊNH bắt buộc: batch_id (PK) làm tie-breaker sau stock_code.
+        // ORDER BY stock_code đơn lẻ + phân trang OFFSET từng gây trùng 1 tag +
+        // thiếu 1 tag ở stock 3428460401 (nhóm ties straddle biên trang 1000):
+        // SQL không đảm bảo thứ tự ties giữa 2 query trang riêng biệt.
         const q = supabase
           .from('reference_stock')
           .select('batch_id,stock_code,warehouse,bin,previous_bin,qty,previous_qty,create_date,tag_7055')
-          .order('stock_code', { ascending: true });
+          .order('stock_code', { ascending: true })
+          .order('batch_id', { ascending: true });
 
         const res = await (q.range ? q.range(from, from + step - 1) : q);
         const data = res?.data;
@@ -358,7 +363,28 @@ export default function ReferenceDataTable({
         from += step;
       }
       if (cancelled) return;
-      setRows(all);
+      // Khử trùng phòng thủ theo PK: nếu backend vẫn trả trùng (ghi đồng thời
+      // giữa 2 lần fetch trang làm lệch OFFSET), UI không bao giờ render 2 dòng
+      // cùng batch_id một cách im lặng.
+      const seenBatch = new Set<string>();
+      const deduped: ReferenceLine[] = [];
+      let dupDropped = 0;
+      for (const r of all) {
+        const k = (r?.batch_id || '').trim();
+        if (!k) continue;
+        if (seenBatch.has(k)) {
+          dupDropped++;
+          continue;
+        }
+        seenBatch.add(k);
+        deduped.push(r);
+      }
+      if (dupDropped > 0) {
+        console.warn(
+          `[Bảng 2] đã loại ${dupDropped} dòng trùng batch_id khi tải phân trang (giữ dòng đầu tiên).`,
+        );
+      }
+      setRows(deduped);
       setVisibleCount(100);
       setLoading(false);
     }
@@ -719,7 +745,10 @@ export default function ReferenceDataTable({
 
                     return (
                       <tr
-                        key={`${r.batch_id}-${i}`}
+                        // Key ổn định theo PK (đã khử trùng khi tải): trùng batch_id
+                        // thật sẽ lộ qua cảnh báo React thay vì render im lặng.
+                        // (Trước đây key `${batch_id}-${i}` che mất trùng lặp.)
+                        key={cleanBatch || `row-${i}`}
                         data-testid={rowTestId}
                         className={`transition-colors ${rowBgClass}`}
                       >

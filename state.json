@@ -1,6 +1,6 @@
 {
   "project_name": "pda-scan-reconciliation-system",
-  "last_updated": "2026-09-08",
+  "last_updated": "2026-09-09",
   "read_before_start": [
     "Plan.md",
     "Skills.md",
@@ -146,5 +146,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-08: Header hiện avatar từng người online riêng lẻ (OnlineUsersStrip cạnh nút Quét Tag, animation trượt vào/ra, tự co mini +N khi đông, click mở modal); vitest 116/116 + tsc + lint + build xanh. Đã commit+push main, chờ CI deploy xanh."
+  "notes_for_next_session": "2026-09-09: FIX Bảng 2 trùng/thiếu tag im lặng (stock 3428460401: thiếu 100006070357 + trùng 199900013990) — nguyên nhân phân trang OFFSET thiếu sort ổn định (ORDER BY stock_code đơn lẻ / không ORDER BY) + không khử trùng + key React che trùng. Đã sửa: order tie-breaker PK (Bảng 2: stock_code+batch_id; useReferenceMap: batch_id; useScannedData: scanned_at+id) + dedup theo PK + key=batch_id. Verify: tsc/lint/build xanh, vitest 119/119 (3 tests hồi quy mới), QC phase 4/5/6 PASS. Chưa commit (chờ user duyệt). Chi tiết xem Learning.md entry 2026-09-09."
 }
