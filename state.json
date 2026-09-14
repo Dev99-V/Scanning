@@ -1,6 +1,6 @@
 {
   "project_name": "pda-scan-reconciliation-system",
-  "last_updated": "2026-09-09",
+  "last_updated": "2026-09-14",
   "read_before_start": [
     "Plan.md",
     "Skills.md",
@@ -146,5 +146,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-09: FIX Bảng 2 trùng/thiếu tag im lặng (stock 3428460401: thiếu 100006070357 + trùng 199900013990) — nguyên nhân phân trang OFFSET thiếu sort ổn định (ORDER BY stock_code đơn lẻ / không ORDER BY) + không khử trùng + key React che trùng. Đã sửa: order tie-breaker PK (Bảng 2: stock_code+batch_id; useReferenceMap: batch_id; useScannedData: scanned_at+id) + dedup theo PK + key=batch_id. Verify: tsc/lint/build xanh, vitest 119/119 (3 tests hồi quy mới), QC phase 4/5/6 PASS. Đã commit 60c0a47 + push main. Chi tiết xem Learning.md entry 2026-09-09."
+  "notes_for_next_session": "2026-09-14: Thêm cảnh báo ngày tạo mới ở Bảng 2 (create_date >= 28/08/2026): chỉ highlight CHỮ ở ô Ngày tạo (sky + nhãn MỚI) + badge header đếm dòng + lọc từ khóa 'mới', giữ nguyên màu nền khớp/lệch/trùng. Verify: oxlint sạch, tsc exit 0, vitest 27 files 126/126 (7 tests mới), build OK, QC phase 4/5/6 PASS. Đã push main. Chi tiết xem Learning.md entry 2026-09-14."
 }

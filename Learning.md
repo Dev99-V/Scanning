@@ -530,3 +530,14 @@
   - Họ lỗi này đã gặp 2 lần (limit-500 ngày 07/09 + unstable-sort ngày 09/09): mọi báo cáo "Bảng thiếu dòng / thừa dòng" phải nghi tầng fetch-phân trang trước tiên, đối chiếu row-count DB vs `rows.length` trước khi đụng tới UI.
 - **Liên quan**: Plan.md §7.3 (Bảng 2), §9 Phase 6; Skills B/C; entry limit-500 ngày 2026-09-07 ở trên (cùng họ lỗi silent-fetch).
 
+### [2026-09-14] Cảnh báo ngày tạo mới ở Bảng 2 (create_date ≥ 28/08/2026, chỉ highlight chữ)
+
+- **Khu vực**: Bảng 2 (`ReferenceDataTable.tsx`, mới `lib/recentCreate.ts`)
+- **Yêu cầu**: dòng nguồn có ngày tạo từ 28/08/2026 đến nay phải gây chú ý cho người thao tác, nhưng không được đè mất màu nền highlight đã có (khớp xanh ngọc / lệch bin vàng cam / lệch SL đỏ / trùng tím).
+- **Cách sửa**:
+  1. `lib/recentCreate.ts`: `RECENT_CREATE_DATE_THRESHOLD_ISO='2026-08-28'` + `isRecentCreateDate()` (parse `Date`, `>=` ngưỡng, null/sai định dạng → false). Tách file riêng để tránh warning fast-refresh của oxlint.
+  2. `ReferenceDataTable.tsx`: badge header `ref-recent-badge` đếm dòng mới; ô Ngày tạo dòng mới chỉ style CHỮ (`text-sky-300` gạch chân chấm + nhãn `⚠️ MỚI`, testid `ref-cell-date-recent`/`ref-badge-recent`); `rowBgClass`/`rowTestId` giữ nguyên thứ tự ưu tiên cũ nên nền khớp/lệch/trùng không đổi; ô tìm kiếm chấp nhận từ khóa `mới/moi/ngày tạo mới` để lọc nhanh.
+- **Bằng chứng đã hết lỗi**: `oxlint` sạch; `tsc -b` exit 0; `vitest` 27 files 126/126 PASS (7 tests mới: 4 helper ngưỡng/biên + 3 UI highlight-chữ/giữ-nền-khớp/lọc-"mới"); `vite build` OK; gates `qc_phase4/5/6` đều `RESULT: PASS`.
+- **Cách phòng tránh lần sau**: mọi cảnh báo cộng thêm trên Bảng 2 phải là text-level (ô/badge), không thêm nhánh vào `rowBgClass` trừ khi user yêu cầu đổi nền.
+- **Liên quan**: Plan.md §7.3 (Bảng 2), §9 Phase 6.
+

@@ -11,6 +11,7 @@ import ActivityLogCard from './ActivityLogCard';
 import ReferenceAddCard from './ReferenceAddCard';
 import ReferenceImportCard from './ReferenceImportCard';
 import Reference7055Card from './Reference7055Card';
+import { isRecentCreateDate } from '../lib/recentCreate';
 
 export interface ReferenceLine {
   batch_id: string;
@@ -181,6 +182,16 @@ export default function ReferenceDataTable({
     }
     return count;
   }, [rows, isRowUnhighlighted]);
+
+  // Đếm số dòng có ngày tạo mới cần chú ý (create_date >= 28/08/2026).
+  // Đếm độc lập với highlight nền dòng để không ảnh hưởng khớp/lệch/trùng.
+  const recentCreateCount = useMemo(() => {
+    let count = 0;
+    for (const r of rows) {
+      if (isRecentCreateDate(r.create_date)) count++;
+    }
+    return count;
+  }, [rows]);
 
   // Danh sách các dòng được đánh dấu 7055
   const rows7055 = useMemo(() => {
@@ -484,6 +495,13 @@ export default function ReferenceDataTable({
       const isSearchingQtyMismatch = term === 'lệch sl' || term === 'lech sl' || term === 'lệch số lượng';
       const isSearchingAnyMismatch = term === 'lệch' || term === 'lech' || term === 'sai lệch';
       const isSearchingDuplicate = term === 'trùng' || term === 'trung' || term === 'trùng tag' || term === 'trùng quét' || term === 'trung quet' || term === 'duplicate';
+      const isSearchingRecent =
+        term === 'mới' ||
+        term === 'moi' ||
+        term === 'ngày mới' ||
+        term === 'ngay moi' ||
+        term === 'ngày tạo mới' ||
+        term === 'ngay tao moi';
 
       list = list.filter((r) => {
         if (isSearchingMatched && isRowMatched(r)) return true;
@@ -491,6 +509,7 @@ export default function ReferenceDataTable({
         if (isSearchingQtyMismatch && isRowQtyMismatch(r)) return true;
         if (isSearchingAnyMismatch && (isRowBinMismatch(r) || isRowQtyMismatch(r))) return true;
         if (isSearchingDuplicate && isRowDuplicateScanned(r)) return true;
+        if (isSearchingRecent && isRecentCreateDate(r.create_date)) return true;
         return (
           r.stock_code.toLowerCase().includes(term) ||
           r.batch_id.toLowerCase().includes(term)
@@ -590,9 +609,19 @@ export default function ReferenceDataTable({
                     LỆCH SL: {qtyMismatchCount.toLocaleString()} DÒNG
                   </span>
                 )}
+                {recentCreateCount > 0 && (
+                  <span
+                    data-testid="ref-recent-badge"
+                    title={`Dòng có ngày tạo từ 28/08/2026 đến nay cần chú ý kiểm tra kỹ`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/20 px-2.5 py-0.5 text-[10px] font-bold text-sky-300 shadow-sm"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+                    ⚠️ NGÀY TẠO MỚI (≥ 28/08): {recentCreateCount.toLocaleString()} DÒNG
+                  </span>
+                )}
               </h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Hiển thị đầy đủ thông tin tồn kho gốc: Stock Code, Tag ID (Batch), Kho, Bin, Số lượng và Ngày tạo. Các dòng khớp Bảng 1 được highlight xanh ngọc; các dòng lệch vị trí (Bin) được highlight vàng cam, lệch số lượng được highlight đỏ.
+                Hiển thị đầy đủ thông tin tồn kho gốc: Stock Code, Tag ID (Batch), Kho, Bin, Số lượng và Ngày tạo. Các dòng khớp Bảng 1 được highlight xanh ngọc; các dòng lệch vị trí (Bin) được highlight vàng cam, lệch số lượng được highlight đỏ. Riêng cảnh báo ngày tạo mới (từ 28/08/2026 đến nay) chỉ highlight CHỮ ở cột Ngày tạo kèm nhãn ⚠️ MỚI để không đè mất màu nền cảnh báo đã có.
               </p>
               {presenceHeader && <div className="mt-1">{presenceHeader}</div>}
             </div>
@@ -920,7 +949,35 @@ export default function ReferenceDataTable({
                           </div>
                         </td>
 
-                        <td className="px-3 py-2 text-center text-slate-400 text-[11px]">{formatDate(r.create_date)}</td>
+                        <td className="px-3 py-2 text-center text-[11px]">
+                          {(() => {
+                            // Cảnh báo ngày tạo mới: CHỈ highlight chữ trong ô này,
+                            // tuyệt đối không đổi màu nền dòng để giữ nguyên
+                            // highlight khớp/lệch/trùng đã có.
+                            const isRecentCreate = isRecentCreateDate(r.create_date);
+                            if (!isRecentCreate) {
+                              return <span className="text-slate-400">{formatDate(r.create_date)}</span>;
+                            }
+                            return (
+                              <span className="inline-flex flex-col items-center gap-0.5">
+                                <span
+                                  data-testid="ref-cell-date-recent"
+                                  title="⚠️ Ngày tạo từ 28/08/2026 đến nay — chú ý kiểm tra kỹ"
+                                  className="font-extrabold text-sky-300 underline decoration-sky-400/60 decoration-dotted underline-offset-2"
+                                >
+                                  {formatDate(r.create_date)}
+                                </span>
+                                <span
+                                  data-testid="ref-badge-recent"
+                                  title="Ngày tạo mới từ 28/08/2026 — chú ý kiểm tra kỹ"
+                                  className="inline-flex items-center gap-1 rounded-full border border-sky-500/50 bg-sky-500/20 px-1.5 py-px text-[9px] font-extrabold tracking-wide text-sky-300 shadow-sm"
+                                >
+                                  <span>⚠️ MỚI</span>
+                                </span>
+                              </span>
+                            );
+                          })()}
+                        </td>
                       </tr>
                     );
                   })}
