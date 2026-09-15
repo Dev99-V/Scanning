@@ -74,8 +74,17 @@ describe('useReferenceMap', () => {
     expect(result.current.byBatch.has('B2')).toBe(false);
   });
 
-  it('order ổn định theo batch_id (PK) + gộp nhiều trang không trùng key', async () => {
-    const fillers = Array.from({ length: 999 }, (_, i) => ({
+  it('removeBatch gỡ khỏi map sau khi xóa dòng nguồn Bảng 2', async () => {
+    const { result } = renderHook(() => useReferenceMap());
+    await act(async () => {});
+    expect(result.current.byBatch.has('B1')).toBe(true);
+    act(() => {
+      result.current.removeBatch('B1');
+    });
+    expect(result.current.byBatch.has('B1')).toBe(false);
+  });
+
+  it('order ổn định theo batch_id (PK) + gộp nhiều trang không trùng key', async () => {    const fillers = Array.from({ length: 999 }, (_, i) => ({
       batch_id: `F${i}`,
       stock_code: 'SF',
       bin: 'B',

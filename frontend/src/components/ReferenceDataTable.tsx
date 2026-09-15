@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table2RowKey } from '../hooks/presenceHelpers';
+import { resolveDuplicate, submitScan } from '../lib/scanApi';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
 import ActivityLogCard from './ActivityLogCard';
@@ -30,6 +31,9 @@ interface ReferenceDataTableProps {
   onQtyUpdated?: (batchId: string, newQty: number) => void;
   onBinUpdated?: (batchId: string, newBin: string) => void;
   onReferenceAdded?: (newRow: ReferenceLine) => void;
+  onReferenceDeleted?: (batchId: string) => void;
+  /** Gọi sau khi nhập kho nhanh thành công để Bảng 1 refetch tức thì (realtime vẫn tự cập nhật). */
+  onQuickImported?: () => void;
   /** Presence realtime (khóa mềm theo dòng). Không bắt buộc để test cũ vẫn chạy. */
   presence?: UsePresenceApi | null;
   /** Dải avatar streaming do App truyền xuống (đã lọc theo Bảng 2). */
@@ -43,6 +47,8 @@ export default function ReferenceDataTable({
   onQtyUpdated,
   onBinUpdated,
   onReferenceAdded,
+  onReferenceDeleted,
+  onQuickImported,
   presence,
   presenceHeader,
   actorName,
@@ -211,6 +217,24 @@ export default function ReferenceDataTable({
   const [isSavingBin, setIsSavingBin] = useState(false);
   const [editBinError, setEditBinError] = useState<string | null>(null);
 
+  // Nhập kho nhanh từ Bảng 2 sang Bảng 1: nút "+" mỗi dòng -> modal xác nhận 1 lần
+  // (Tag ID + Bin + Qty, giống hệt modal quét tag) -> gọi scan-submit hiện có.
+  const [quickRow, setQuickRow] = useState<ReferenceLine | null>(null);
+  const [quickBin, setQuickBin] = useState('');
+  const [quickQty, setQuickQty] = useState('');
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickNotice, setQuickNotice] = useState<string | null>(null);
+  const [quickConflict, setQuickConflict] = useState<{
+    existingId: string;
+    existingBin: string;
+    action: 'append' | 'relocate' | null;
+  } | null>(null);
+
+  // Xóa nhanh dòng nguồn ở Bảng 2 (dùng RPC delete_reference_stock hiện có).
+  const [deletingRefRow, setDeletingRefRow] = useState<ReferenceLine | null>(null);
+  const [isDeletingRef, setIsDeletingRef] = useState(false);
+  const [deleteRefNotice, setDeleteRefNotice] = useState<string | null>(null);
+
   // Nhả khóa presence khi unmount thật (đóng tab giữa chừng) để dòng nguồn
   // không kẹt. Dùng ref để object presence mới (đổi mỗi khi peers đổi) không
   // kích hoạt nhả khóa sớm làm mất lock khi modal còn mở.
@@ -344,6 +368,170 @@ export default function ReferenceDataTable({
       setEditError(`Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsSavingQty(false);
+    }
+  }
+
+  // ---- Nhập kho nhanh: mở modal xác nhận 1 lần với Tag/Bin/Qty từ dòng nguồn ----
+  function openQuickModal(row: ReferenceLine) {
+    const holder = presence?.getLock('table2', table2RowKey(row.batch_id));
+    if (holder) {
+      setQuickNotice(`🔒 ${holder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới.`);
+      setQuickRow(row);
+      setQuickBin(row.bin);
+      setQuickQty(String(row.qty));
+      setQuickConflict(null);
+      return;
+    }
+    presence?.setEditing({
+      table: 'table2',
+      key: table2RowKey(row.batch_id),
+      batchId: (row.batch_id || '').trim(),
+      label: 'nhập kho nhanh Bảng 2',
+    });
+    setQuickRow(row);
+    setQuickBin(row.bin);
+    setQuickQty(String(row.qty));
+    setQuickNotice(null);
+    // Cảnh báo sớm nếu Tag đã có lượt quét ở Bảng 1 (giống pre-check modal quét tag).
+    const cleanBatch = (row.batch_id || '').trim();
+    const existingScans = scannedByBatch.get(cleanBatch);
+    if (existingScans && existingScans.length > 0) {
+      const first = existingScans[0];
+      setQuickConflict({ existingId: first.id, existingBin: first.bin, action: null });
+    } else {
+      setQuickConflict(null);
+    }
+  }
+
+  function closeQuickModal() {
+    setQuickRow(null);
+    setQuickConflict(null);
+    setQuickNotice(null);
+    presence?.clearEditing();
+  }
+
+  function chooseQuickDuplicateAction(action: 'append' | 'relocate') {
+    setQuickConflict((prev) => (prev ? { ...prev, action } : prev));
+    setQuickNotice(
+      action === 'append'
+        ? 'Đã chọn: GHI THÊM bản ghi mới. Bấm Xác nhận để nhập kho.'
+        : `Đã chọn: ĐỔI VỊ TRÍ sang "${quickBin.trim()}". Bấm Xác nhận để nhập kho.`,
+    );
+  }
+
+  async function handleQuickConfirm() {
+    if (!quickRow) return;
+    const holder = presence?.getLock('table2', table2RowKey(quickRow.batch_id));
+    // Nếu dòng đang bị người khác khóa mà mình chưa giữ lock thì chặn (trừ trường hợp
+    // vừa mở modal đã thấy lock — vẫn cho đọc nhưng không cho ghi).
+    if (holder) {
+      setQuickNotice(`🔒 ${holder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới.`);
+      return;
+    }
+    const batchId = (quickRow.batch_id || '').trim();
+    const binVal = quickBin.trim();
+    const qtyVal = Number(quickQty.trim());
+    if (!batchId) {
+      setQuickNotice('⚠️ Tag ID không hợp lệ.');
+      return;
+    }
+    if (!binVal) {
+      setQuickNotice('⚠️ Vui lòng nhập Vị trí (Bin).');
+      return;
+    }
+    if (!Number.isFinite(qtyVal) || qtyVal <= 0) {
+      setQuickNotice('⚠️ Vui lòng nhập Số lượng hợp lệ (> 0).');
+      return;
+    }
+    setQuickBusy(true);
+    setQuickNotice(null);
+    try {
+      const stockCode = (quickRow.stock_code || '').trim() || null;
+      if (quickConflict?.action) {
+        const res = await resolveDuplicate({
+          action: quickConflict.action,
+          scannedId: quickConflict.existingId,
+          batchId,
+          qty: qtyVal,
+          bin: binVal,
+          stockCode,
+          ...(actorName ? { actorName } : {}),
+        });
+        if (res.kind === 'resolved') {
+          onQuickImported?.();
+          closeQuickModal();
+        } else {
+          setQuickNotice(`❌ Lỗi: ${res.message} (${res.code})`);
+        }
+      } else {
+        const outcome = await submitScan({
+          batchId,
+          qty: qtyVal,
+          bin: binVal,
+          isManual: false,
+          stockCode,
+          ...(actorName ? { actorName } : {}),
+        });
+        if (outcome.kind === 'scanned') {
+          onQuickImported?.();
+          closeQuickModal();
+        } else if (outcome.kind === 'duplicate') {
+          setQuickConflict({
+            existingId: outcome.conflict.existingId,
+            existingBin: outcome.conflict.attempted.bin,
+            action: null,
+          });
+          setQuickNotice(`⚠️ Tag ID ${batchId} đã có trong Bảng 1 — vui lòng chọn Ghi thêm hoặc Đổi vị trí.`);
+        } else {
+          setQuickNotice(`❌ Lỗi: ${outcome.message} (${outcome.code})`);
+        }
+      }
+    } catch (e) {
+      setQuickNotice(`❌ Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setQuickBusy(false);
+    }
+  }
+
+  // ---- Xóa nhanh dòng nguồn ----
+  function openDeleteRefModal(row: ReferenceLine) {
+    const holder = presence?.getLock('table2', table2RowKey(row.batch_id));
+    if (holder) return;
+    presence?.setEditing({
+      table: 'table2',
+      key: table2RowKey(row.batch_id),
+      batchId: (row.batch_id || '').trim(),
+      label: 'xóa dòng nguồn Bảng 2',
+    });
+    setDeleteRefNotice(null);
+    setDeletingRefRow(row);
+  }
+
+  function closeDeleteRefModal() {
+    setDeletingRefRow(null);
+    presence?.clearEditing();
+  }
+
+  async function handleConfirmDeleteRef() {
+    if (!deletingRefRow) return;
+    setIsDeletingRef(true);
+    setDeleteRefNotice(null);
+    try {
+      const { data, error } = await supabase.rpc('delete_reference_stock', {
+        p_batch_id: deletingRefRow.batch_id,
+      });
+      if (error || !data?.ok) {
+        setDeleteRefNotice(`❌ Lỗi xóa: ${error?.message || data?.error || 'Không xác định'}`);
+      } else {
+        const goneId = (deletingRefRow.batch_id || '').trim();
+        setRows((prev) => prev.filter((r) => (r.batch_id || '').trim() !== goneId));
+        onReferenceDeleted?.(goneId);
+        closeDeleteRefModal();
+      }
+    } catch (e) {
+      setDeleteRefNotice(`❌ Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsDeletingRef(false);
     }
   }
 
@@ -725,7 +913,7 @@ export default function ReferenceDataTable({
               onScroll={handleScroll}
               className="max-h-[440px] overflow-y-auto overflow-x-auto rounded-xl border border-white/10 bg-black/30 custom-scrollbar"
             >
-              <table className="w-full min-w-[700px] text-left font-mono text-xs">
+              <table className="w-full min-w-[780px] text-left font-mono text-xs">
                 <thead className="sticky top-0 z-10 bg-slate-950 text-slate-400 border-b border-white/10 shadow">
                   <tr>
                     <th className="px-3 py-2.5">STOCK CODE</th>
@@ -734,6 +922,7 @@ export default function ReferenceDataTable({
                     <th className="px-3 py-2.5 text-right">BIN</th>
                     <th className="px-3 py-2.5 text-right">SỐ LƯỢNG</th>
                     <th className="px-3 py-2.5 text-center">NGÀY TẠO</th>
+                    <th className="px-3 py-2.5 text-center">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
@@ -977,6 +1166,31 @@ export default function ReferenceDataTable({
                               </span>
                             );
                           })()}
+                        </td>
+
+                        {/* Thao tác nhanh: nhập kho sang Bảng 1 (+) + xóa dòng nguồn */}
+                        <td className="px-3 py-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openQuickModal(r)}
+                              title="Nhập kho nhanh sang Bảng 1 (Tag + Bin + SL)"
+                              aria-label={`Nhập kho nhanh ${r.batch_id}`}
+                              className="rounded-lg border border-emerald-500/40 bg-emerald-950/60 px-2 py-1 text-sm font-black text-emerald-300 transition hover:bg-emerald-900 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              +
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openDeleteRefModal(r)}
+                              disabled={Boolean(lockHolder)}
+                              title={lockHolder ? `${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới` : 'Xóa dòng nguồn này'}
+                              aria-label={`Xóa dòng nguồn ${r.batch_id}`}
+                              className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-rose-500/40 hover:bg-rose-950/60 hover:text-rose-300 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-transparent disabled:hover:bg-transparent"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1318,6 +1532,233 @@ export default function ReferenceDataTable({
                 className="rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-emerald-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
               >
                 {isSavingBin ? 'Đang lưu...' : '💾 Lưu thay đổi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal nhập kho nhanh từ Bảng 2 sang Bảng 1 (xác nhận 1 lần) */}
+      {quickRow && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="quick-import-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+        >
+          <div className="glass-panel relative flex w-full max-w-md flex-col rounded-3xl border border-emerald-500/50 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚡</span>
+                <div>
+                  <h3 id="quick-import-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
+                    Nhập Kho Nhanh Sang Bảng 1
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                    Xác nhận 1 lần — Tag + Bin + SL như quét tag
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={quickBusy}
+                onClick={() => closeQuickModal()}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3 text-xs">
+              <div className="space-y-1.5 rounded-2xl border border-white/10 bg-black/60 p-3.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Mã hàng:</span>
+                  <span className="font-bold text-slate-200">{quickRow.stock_code}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tag ID:</span>
+                  <span className="font-bold text-cyan-300">{quickRow.batch_id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Kho:</span>
+                  <span className="font-bold text-slate-300">{quickRow.warehouse}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="quick-bin-input" className="mb-1.5 block font-bold uppercase tracking-wider text-emerald-400 text-[11px]">
+                    Vị trí (Bin):
+                  </label>
+                  <input
+                    id="quick-bin-input"
+                    aria-label="Vị trí Bin nhập kho nhanh"
+                    type="text"
+                    value={quickBin}
+                    disabled={quickBusy}
+                    onChange={(e) => setQuickBin(e.target.value)}
+                    className="w-full rounded-xl border-2 border-emerald-500/50 bg-black/70 p-2.5 text-center font-mono text-sm font-bold uppercase text-emerald-300 focus:border-emerald-400 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="quick-qty-input" className="mb-1.5 block font-bold uppercase tracking-wider text-emerald-400 text-[11px]">
+                    Số lượng:
+                  </label>
+                  <input
+                    id="quick-qty-input"
+                    aria-label="Số lượng nhập kho nhanh"
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={quickQty}
+                    disabled={quickBusy}
+                    onChange={(e) => setQuickQty(e.target.value)}
+                    className="w-full rounded-xl border-2 border-emerald-500/50 bg-black/70 p-2.5 text-center font-mono text-sm font-bold text-emerald-300 focus:border-emerald-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {quickConflict && (
+                <div className="rounded-xl border border-rose-500/60 bg-rose-950/40 p-3 text-xs">
+                  <p className="font-bold text-rose-300">
+                    ⚠️ Tag {quickRow.batch_id} đã có trong Bảng 1 tại vị trí &quot;{quickConflict.existingBin}&quot; — chọn cách xử lý:
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => chooseQuickDuplicateAction('append')}
+                      className={`flex-1 rounded-lg py-2 font-bold transition ${
+                        quickConflict.action === 'append'
+                          ? 'bg-rose-600 text-white shadow-lg'
+                          : 'bg-rose-950/80 text-rose-200 hover:bg-rose-900'
+                      }`}
+                    >
+                      ➕ Ghi thêm
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => chooseQuickDuplicateAction('relocate')}
+                      className={`flex-1 rounded-lg py-2 font-bold transition ${
+                        quickConflict.action === 'relocate'
+                          ? 'bg-amber-600 text-white shadow-lg'
+                          : 'bg-amber-950/80 text-amber-200 hover:bg-amber-900'
+                      }`}
+                    >
+                      🔄 Đổi vị trí
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[11px] text-slate-400 italic">
+                * Sau khi xác nhận, hệ thống đối chiếu Bảng 1 ↔ Bảng 2 bình thường: sai thì cảnh báo, đúng thì báo khớp.
+              </p>
+
+              {quickNotice && (
+                <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                  {quickNotice}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                disabled={quickBusy}
+                onClick={() => closeQuickModal()}
+                className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={quickBusy || !quickBin.trim() || !quickQty.trim()}
+                onClick={() => void handleQuickConfirm()}
+                className="rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-emerald-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+              >
+                {quickBusy ? 'Đang nhập...' : '⚡ Xác nhận nhập kho'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal xác nhận xóa dòng nguồn Bảng 2 */}
+      {deletingRefRow && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-ref-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+        >
+          <div className="glass-panel relative flex w-full max-w-md flex-col rounded-3xl border border-rose-500/50 bg-slate-950 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <h3 id="delete-ref-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
+                    Xác Nhận Xóa Dòng Nguồn
+                  </h3>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-rose-400">
+                    Xóa dữ liệu nguồn Bảng 2
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isDeletingRef}
+                onClick={() => closeDeleteRefModal()}
+                className="rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="my-4 space-y-3 text-xs">
+              <p className="text-slate-300">
+                Bạn có chắc chắn muốn xóa dòng nguồn này? Dữ liệu sẽ bị loại khỏi hệ thống và Bảng 1 sẽ đối chiếu lại ngay.
+              </p>
+              <div className="space-y-1.5 rounded-2xl border border-white/10 bg-black/60 p-3.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Mã hàng:</span>
+                  <span className="font-bold text-slate-200">{deletingRefRow.stock_code}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tag ID:</span>
+                  <span className="font-bold text-cyan-300">{deletingRefRow.batch_id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Kho / Bin:</span>
+                  <span className="font-bold text-emerald-300">{deletingRefRow.warehouse} / {deletingRefRow.bin}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Số lượng:</span>
+                  <span className="font-bold text-white">{deletingRefRow.qty}</span>
+                </div>
+              </div>
+              {deleteRefNotice && (
+                <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                  {deleteRefNotice}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                type="button"
+                disabled={isDeletingRef}
+                onClick={() => closeDeleteRefModal()}
+                className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingRef}
+                onClick={() => void handleConfirmDeleteRef()}
+                className="rounded-xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-rose-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+              >
+                {isDeletingRef ? 'Đang xóa...' : '🗑️ Xác nhận xóa'}
               </button>
             </div>
           </div>

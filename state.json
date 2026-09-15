@@ -1,6 +1,6 @@
 {
   "project_name": "pda-scan-reconciliation-system",
-  "last_updated": "2026-09-14",
+  "last_updated": "2026-09-15",
   "read_before_start": [
     "Plan.md",
     "Skills.md",
@@ -71,6 +71,18 @@
       "detail": "Migration 20260909091000: actor_name + audit đủ (add/sửa nguồn/xóa quét) + realtime scan_audit_log; 7 RPC thêm p_actor_name OPTIONAL; Edge scan/resolve/import chuyển tiếp actor_name. Tương thích ngược (frontend cũ chạy được); deploy backend trước là an toàn tuyệt đối. Cần supabase db push + functions deploy lên cloud.",
       "status": "pending_cloud_apply",
       "date": "2026-09-08"
+    },
+    {
+      "type": "rpc_additive_bin_edit",
+      "detail": "Migration 20260915090000_update_scanned_tag_id_add_bin.sql: update_scanned_tag_id thêm p_new_bin OPTIONAL (NULL=giữ bin cũ, tương thích ngược frontend cũ). Frontend Bảng 1 gửi thêm p_new_bin khi sửa vị trí nhanh. Cần supabase db push lên cloud (CI backend-deploy khi merge main).",
+      "status": "pending_cloud_apply",
+      "date": "2026-09-15"
+    },
+    {
+      "type": "frontend_only_quick_ops",
+      "detail": "User yêu cầu 2026-09-15: (1) Bảng 2 nút + nhập kho nhanh sang Bảng 1 qua Edge scan-submit/resolve-duplicate hiện có (không đổi contract, đối chiếu chuẩn); (2) Bảng 2 nút xóa dùng RPC delete_reference_stock hiện có. Chỉ frontend, không đổi backend.",
+      "status": "frontend_implementing",
+      "date": "2026-09-15"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {
@@ -146,5 +158,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-14: Thêm cảnh báo ngày tạo mới ở Bảng 2 (create_date >= 28/08/2026): chỉ highlight CHỮ ở ô Ngày tạo (sky + nhãn MỚI) + badge header đếm dòng + lọc từ khóa 'mới', giữ nguyên màu nền khớp/lệch/trùng. Verify: oxlint sạch, tsc exit 0, vitest 27 files 126/126 (7 tests mới), build OK, QC phase 4/5/6 PASS. Đã push main. Chi tiết xem Learning.md entry 2026-09-14."
+  "notes_for_next_session": "2026-09-15: Nhập kho nhanh Bảng 2 (nút + -> modal xác nhận 1 lần Tag/Bin/Qty -> scan-submit/resolve-duplicate, đối chiếu chuẩn), sửa Bin nhanh ở modal bút Bảng 1 (RPC thêm p_new_bin OPTIONAL, migration 20260915090000), nút xóa dòng nguồn Bảng 2 (delete_reference_stock). Verify: oxlint sạch, tsc exit 0, vitest 28 files 132/132 (6 tests mới), build OK, QC phase 4/5/6 PASS. Đã push main. Cần supabase db push cloud để RPC bin mới live. Chi tiết xem Learning.md entry 2026-09-15."
 }

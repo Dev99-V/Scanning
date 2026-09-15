@@ -28,6 +28,19 @@
 
 ## Nhật ký
 
+### [2026-09-15] Nhập kho nhanh Bảng 2 (+), sửa Bin nhanh Bảng 1, xóa dòng nguồn Bảng 2
+
+- **Khu vực**: RPC `update_scanned_tag_id` (migration `20260915090000_update_scanned_tag_id_add_bin.sql`), Frontend (`ReconciliationTable.tsx`, `ReferenceDataTable.tsx`, `useReferenceMap.ts`, `App.tsx`)
+- **Triệu chứng & Yêu cầu người dùng**: (1) Bảng 2 cần nút "+" mỗi dòng -> hỏi xác nhận 1 lần rồi nhập Tag+Bin+Qty sang Bảng 1 như modal quét tag, đối chiếu khớp/lệch/trùng bình thường; (2) Bảng 1 modal bút cần thêm trường sửa Vị trí (Bin); (3) Bảng 2 cần nút xóa nhanh dòng nguồn.
+- **Cách sửa**:
+  1. DB: `update_scanned_tag_id` thêm `p_new_bin OPTIONAL` (NULL = giữ bin cũ, tương thích ngược); so sánh lại `bin_mismatch` theo bin mới, `UPDATE scanned_data.bin`, audit `edit` ghi đủ bin cũ/mới; drop 3 overload cũ, grant overload 6 tham số.
+  2. Bảng 1: modal bút thêm ô "Vị trí (Bin) quét" (prefill + validate non-empty, gửi `p_new_bin`), ô Bin quét chuyển thành nút bấm mở modal sửa nhanh; title modal cập nhật.
+  3. Bảng 2: thêm cột THAO TÁC với nút "+" (modal xác nhận 1 lần: Bin/Qty editable prefill từ nguồn, gọi `submitScan` y hệt modal quét tag + rẽ nhánh `duplicate` sang Ghi thêm/Đổi vị trí qua `resolveDuplicate`) và nút 🗑️ (modal xác nhận, gọi RPC `delete_reference_stock` hiện có, gỡ dòng + callback parent).
+  4. `useReferenceMap.removeBatch` + `App` wiring `onReferenceDeleted/onQuickImported` (refetch Bảng 1 tức thì, realtime vẫn tự stream).
+- **Bằng chứng đã hết lỗi**: `oxlint` sạch; `tsc -b` exit 0; `vitest` 28 files 132/132 PASS (mới: sửa Bin Bảng 1, 4 tests quickops Bảng 2, removeBatch); `vite build` OK; QC phase 4/5/6 PASS.
+- **Cách phòng tránh lần sau**: đổi title/label modal phải grep test assert text cũ trước khi push; thêm param RPC luôn để OPTIONAL + drop overload cũ để PostgREST không phân vân; thao tác mới dùng lại Edge/RPC hiện có thay vì bịa contract mới.
+- **Liên quan**: Plan.md §4/§6/§7 (yêu cầu mở rộng do user chốt 2026-09-15); `state.json:pending_contract_changes` (rpc_additive_bin_edit chờ push cloud).
+
 ### [2026-09-08] Dải avatar online tách từng người trên header (thay Online (N) gộp)
 
 - **Khu vực**: Frontend header (`App.tsx`, mới `OnlineUsersStrip.tsx`, `index.css`)

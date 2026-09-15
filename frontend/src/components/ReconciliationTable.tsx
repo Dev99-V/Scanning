@@ -46,10 +46,11 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
-  // State cho modal chỉnh sửa Tag ID & Số lượng quét
+  // State cho modal chỉnh sửa Tag ID & Số lượng & Vị trí quét
   const [editingRow, setEditingRow] = useState<ScanRow | null>(null);
   const [newTagId, setNewTagId] = useState('');
   const [editQty, setEditQty] = useState('');
+  const [editBin, setEditBin] = useState('');
   const [manualStockCode, setManualStockCode] = useState('');
   const [isSavingTag, setIsSavingTag] = useState(false);
   const [editNotice, setEditNotice] = useState<string | null>(null);
@@ -70,6 +71,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     setEditingRow(r);
     setNewTagId(r.batch_id);
     setEditQty(String(r.qty));
+    setEditBin(r.bin);
     const cleanBatch = (r.batch_id || '').trim();
     const sys = systemByBatch.get(cleanBatch);
     setManualStockCode(r.stock_code ?? sys?.stock_code ?? '');
@@ -89,6 +91,11 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
       setEditNotice('⚠️ Số lượng quét phải là một số không âm hợp lệ.');
       return;
     }
+    const cleanBin = editBin.trim();
+    if (!cleanBin) {
+      setEditNotice('⚠️ Vui lòng nhập Vị trí (Bin) quét hợp lệ (không được để trống).');
+      return;
+    }
     setIsSavingTag(true);
     setEditNotice(null);
     try {
@@ -97,6 +104,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
         p_new_batch_id: cleanTag,
         p_stock_code: manualStockCode.trim() || null,
         p_new_qty: cleanQty,
+        p_new_bin: cleanBin,
         ...(actorName ? { p_actor_name: actorName } : {}),
       });
       if (error || !data?.ok) {
@@ -390,17 +398,25 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                     </span>
                   </td>
 
-                  {/* Bin quét (màu đỏ cảnh báo nếu sai lệch) */}
+                  {/* Bin quét (màu đỏ cảnh báo nếu sai lệch, bấm để sửa nhanh) */}
                   <td className="px-3 py-2.5 text-right">
-                    <span
-                      className={
-                        isBinDiff
-                          ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
-                          : 'font-semibold text-slate-200'
-                      }
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(r)}
+                      disabled={Boolean(lockHolder)}
+                      title={lockHolder ? `${lockHolder.name} đang thao tác dòng này` : 'Bấm để chỉnh sửa vị trí quét'}
+                      className="hover:underline transition text-right font-bold inline-block disabled:no-underline disabled:opacity-60"
                     >
-                      {r.bin}
-                    </span>
+                      <span
+                        className={
+                          isBinDiff
+                            ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                            : 'font-semibold text-slate-200'
+                        }
+                      >
+                        {r.bin}
+                      </span>
+                    </button>
                   </td>
 
                   {/* Bin hệ thống (màu đỏ cảnh báo nếu sai lệch) */}
@@ -602,10 +618,10 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 <span className="text-2xl">✏️</span>
                 <div>
                   <h3 id="edit-tag-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
-                    Chỉnh Sửa Tag ID &amp; Số Lượng Quét
+                    Chỉnh Sửa Tag ID, Số Lượng &amp; Vị Trí Quét
                   </h3>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
-                    Sửa Tag ID hoặc Số lượng quét do quét hoặc nhập nhầm
+                    Sửa Tag ID, Số lượng hoặc Vị trí quét do quét hoặc nhập nhầm
                   </p>
                 </div>
               </div>
@@ -641,7 +657,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 </div>
               </div>
 
-              {/* Hàng nhập Tag ID và Số lượng quét mới */}
+              {/* Hàng nhập Tag ID, Số lượng và Vị trí quét mới */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Ô nhập Tag ID mới */}
                 <div>
@@ -674,6 +690,22 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                     onChange={(e) => setEditQty(e.target.value)}
                     placeholder="Nhập số lượng..."
                     className="w-full rounded-xl border border-cyan-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold text-cyan-300 placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                  />
+                </div>
+
+                {/* Ô nhập Vị trí (Bin) quét mới — sửa nhanh ngay trong Bảng 1 */}
+                <div className="sm:col-span-2">
+                  <label htmlFor="edit-new-bin-input" className="block text-[11px] font-bold uppercase tracking-wider text-cyan-400 mb-1">
+                    Vị trí (Bin) quét:
+                  </label>
+                  <input
+                    id="edit-new-bin-input"
+                    aria-label="Vị trí Bin quét mới"
+                    type="text"
+                    value={editBin}
+                    onChange={(e) => setEditBin(e.target.value)}
+                    placeholder="Nhập vị trí Bin quét..."
+                    className="w-full rounded-xl border border-cyan-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold uppercase text-cyan-300 placeholder:text-slate-600 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
                   />
                 </div>
               </div>
@@ -742,7 +774,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 </button>
                 <button
                   type="submit"
-                  disabled={isSavingTag || !newTagId.trim() || editQty.trim() === ''}
+                  disabled={isSavingTag || !newTagId.trim() || editQty.trim() === '' || !editBin.trim()}
                   className="rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-cyan-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
                 >
                   {isSavingTag ? 'Đang lưu...' : '💾 Lưu thay đổi'}

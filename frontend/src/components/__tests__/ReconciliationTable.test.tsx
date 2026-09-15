@@ -139,6 +139,7 @@ describe('ReconciliationTable', () => {
         p_new_batch_id: 'CORRECT_TAG',
         p_stock_code: null,
         p_new_qty: 5,
+        p_new_bin: 'BIN_A',
       });
       expect(onRowUpdated).toHaveBeenCalled();
     });
@@ -159,7 +160,7 @@ describe('ReconciliationTable', () => {
     fireEvent.click(qtyBtn);
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText(/Chỉnh Sửa Tag ID & Số Lượng Quét/i)).toBeInTheDocument();
+    expect(screen.getByText(/Chỉnh Sửa Tag ID, Số Lượng & Vị Trí Quét/i)).toBeInTheDocument();
 
     // Sửa số lượng quét từ 2 thành 5
     const qtyInput = screen.getByLabelText('Số lượng quét mới');
@@ -175,6 +176,40 @@ describe('ReconciliationTable', () => {
         p_new_batch_id: 'TAG_001',
         p_stock_code: 'SKU_1',
         p_new_qty: 5,
+        p_new_bin: 'BIN_A',
+      });
+      expect(onRowUpdated).toHaveBeenCalled();
+    });
+  });
+
+  it('cho phép sửa nhanh vị trí (Bin) quét trong modal bút ở Bảng 1', async () => {
+    const onRowUpdated = vi.fn();
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-bin-edit', batch_id: 'TAG_001', qty: 5, bin: 'BIN_OLD' })]}
+        systemByBatch={new Map([['TAG_001', { stock_code: 'SKU_1', qty: 5, bin: 'BIN_NEW_REF' }]])}
+        onRowUpdated={onRowUpdated}
+      />,
+    );
+
+    // Bấm vào ô Bin quét để mở modal sửa nhanh
+    const binBtn = screen.getByTitle('Bấm để chỉnh sửa vị trí quét');
+    fireEvent.click(binBtn);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    const binInput = screen.getByLabelText('Vị trí Bin quét mới');
+    expect(binInput).toHaveValue('BIN_OLD');
+    fireEvent.change(binInput, { target: { value: 'BIN_NEW_REF' } });
+
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('update_scanned_tag_id', {
+        p_id: 'r-bin-edit',
+        p_new_batch_id: 'TAG_001',
+        p_stock_code: 'SKU_1',
+        p_new_qty: 5,
+        p_new_bin: 'BIN_NEW_REF',
       });
       expect(onRowUpdated).toHaveBeenCalled();
     });

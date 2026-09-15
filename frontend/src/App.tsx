@@ -20,7 +20,7 @@ import { useScannedData } from './hooks/useScannedData';
 
 export default function App() {
   const { rows, refetch } = useScannedData();
-  const { byBatch, updateBatchQty, updateBatchBin, addBatch } = useReferenceMap();
+  const { byBatch, updateBatchQty, updateBatchBin, addBatch, removeBatch } = useReferenceMap();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   // Hiện diện realtime: bắt buộc đặt tên → avatar streaming + khóa mềm theo dòng.
   const { identity, saveName, rename } = useIdentity();
@@ -211,6 +211,11 @@ export default function App() {
             });
             void refetch();
           }}
+          onReferenceDeleted={(batchId) => {
+            removeBatch(batchId);
+            void refetch();
+          }}
+          onQuickImported={() => void refetch()}
         />
       </div>
 

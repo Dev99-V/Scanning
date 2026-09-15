@@ -82,6 +82,16 @@ export function useReferenceMap() {
     });
   }, []);
 
+  const removeBatch = useCallback((batchId: string) => {
+    const cleanId = (batchId || '').trim();
+    setByBatch((prev) => {
+      if (!prev.has(cleanId)) return prev;
+      const next = new Map(prev);
+      next.delete(cleanId);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     void load();
 
@@ -130,6 +140,6 @@ export function useReferenceMap() {
     };
   }, [load]);
 
-  return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin, addBatch };
+  return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin, addBatch, removeBatch };
 }
 

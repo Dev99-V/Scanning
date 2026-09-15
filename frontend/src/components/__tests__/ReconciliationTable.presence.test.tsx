@@ -65,7 +65,7 @@ describe('ReconciliationTable presence lock', () => {
       />,
     );
     fireEvent.click(screen.getByLabelText('Chỉnh sửa Tag ID B1'));
-    expect(screen.getByText('Chỉnh Sửa Tag ID & Số Lượng Quét')).toBeInTheDocument();
+    expect(screen.getByText('Chỉnh Sửa Tag ID, Số Lượng & Vị Trí Quét')).toBeInTheDocument();
     expect(presence.setEditing).toHaveBeenCalledWith(
       expect.objectContaining({ table: 'table1', key: 't1:r1', batchId: 'B1' }),
     );
