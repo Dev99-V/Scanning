@@ -28,6 +28,20 @@
 
 ## Nhật ký
 
+### [2026-09-15] Probe cloud: key đủ quyền, lỗi schema-cache do migration chưa lên cloud
+
+- **Khu vực**: Cloud Supabase project `pobabdgyukyufzzxbvsn` (diagnostic trực tiếp, không code)
+- **Triệu chứng**: user báo `Could not find the function public.update_scanned_tag_id(...p_new_bin...) in the schema cache` và hỏi key có đủ quyền không.
+- **Bằng chứng đo thật** (toàn bộ probe không ghi dữ liệu: id/batch giả):
+  1. JWT anon giải mã tại chỗ: đúng `ref`, `role: anon`, còn hạn tới 2036; GET `reference_stock` → HTTP 200 có dữ liệu thật → quyền đọc OK.
+  2. RPC cũ (5 params, id giả) → `{"ok":false,"error":"not_found"}` HTTP 200 → function cũ live + anon execute OK.
+  3. RPC mới (+`p_new_bin`) → `PGRST202` HTTP 404, hint liệt kê đúng signature cũ 5 params → migration `20260915090000` CHƯA lên cloud. Đây là nguyên nhân duy nhất của lỗi, không phải do key.
+  4. `delete_reference_stock` (batch giả) → `ok:true` HTTP 200, xóa 0 dòng → nút xóa Bảng 2 đủ quyền chạy.
+  5. Edge `scan-submit` (body rỗng) → `invalid_input` HTTP 400 → function đã deploy, nhập kho nhanh Bảng 2 đủ điều kiện chạy.
+- **Cách sửa**: không đụng key runtime; chạy `backend-deploy` (cần `SUPABASE_ACCESS_TOKEN` loại `sbp_` + `SUPABASE_DB_PASSWORD` trong GitHub Secrets) để `db push` migration lên cloud. Frontend đã có fallback nên kho vẫn sửa Tag/SL được trong lúc chờ.
+- **Cách phòng tránh lần sau**: lỗi `PGRST202 schema cache` sau khi thêm param RPC = kiểm tra migration đã lên cloud chưa trước khi nghi key/RLS; probe phân biệt bằng id/batch giả (not_found = sống, PGRST202 = thiếu migration).
+- **Liên quan**: migration `20260915090000_update_scanned_tag_id_add_bin.sql`; Key ghi chú BẢO MẬT: user đã paste `sb_secret_*`/anon/service_role lên chat → phải rotate ngay (service_role bypass RLS, toàn quyền DB).
+
 ### [2026-09-15] Fallback schema-cache khi cloud chưa deploy migration p_new_bin
 
 - **Khu vực**: Frontend Bảng 1 (`ReconciliationTable.tsx` modal bút sửa)

@@ -158,5 +158,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-15 (bổ sung): Frontend Bảng 1 tự fallback contract cũ khi cloud chưa có p_new_bin (hết chặn sửa Tag/SL, Bin đổi báo rõ chờ backend-deploy). Verify: vitest 28 files 133/133, build OK. Deploy backend cloud vẫn kẹt ở token (Authorization failed) — user cần cập nhật lại SUPABASE_ACCESS_TOKEN + thêm SUPABASE_DB_PASSWORD rồi re-run workflow. Chi tiết Learning.md entry fallback schema-cache."
+  "notes_for_next_session": "2026-09-15 (probe cloud): Key anon/service_role đúng project + đủ quyền (đọc 200, RPC cũ not_found, delete_reference_stock ok, scan-submit reachable). Lỗi schema-cache do migration 20260915090000 CHƯA lên cloud (PGRST202) — fix duy nhất là chạy backend-deploy (cần SUPABASE_ACCESS_TOKEN sbp_ + SUPABASE_DB_PASSWORD). BẢO MẬT: user đã paste sb_secret/anon/service_role lên chat → phải rotate ngay. Chi tiết Learning.md entry probe cloud."
 }
