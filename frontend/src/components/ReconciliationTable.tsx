@@ -99,16 +99,43 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     setIsSavingTag(true);
     setEditNotice(null);
     try {
-      const { data, error } = await supabase.rpc('update_scanned_tag_id', {
+      const baseArgs = {
         p_id: editingRow.id,
         p_new_batch_id: cleanTag,
         p_stock_code: manualStockCode.trim() || null,
         p_new_qty: cleanQty,
-        p_new_bin: cleanBin,
         ...(actorName ? { p_actor_name: actorName } : {}),
+      };
+      // Thử contract mới (kèm p_new_bin) trước; nếu backend cloud chưa deploy
+      // migration 20260915090000 thì PostgREST báo "schema cache" -> fallback
+      // contract cũ để Tag/SL vẫn lưu được, không chặn công việc kho.
+      let { data, error } = await supabase.rpc('update_scanned_tag_id', {
+        ...baseArgs,
+        p_new_bin: cleanBin,
       });
-      if (error || !data?.ok) {
-        setEditNotice(`❌ Lỗi cập nhật: ${error?.message || data?.error || 'Không xác định'}`);
+      const errText = `${error?.message ?? ''} ${(data as { error?: unknown } | null)?.error ?? ''}`;
+      const isSchemaCacheMiss =
+        errText.toLowerCase().includes('schema cache') ||
+        errText.includes('Could not find the function');
+      if (isSchemaCacheMiss) {
+        const retry = await supabase.rpc('update_scanned_tag_id', baseArgs);
+        data = retry.data;
+        error = retry.error;
+        if (!error && (data as { ok?: unknown } | null)?.ok === true) {
+          if (cleanBin !== editingRow.bin) {
+            setEditNotice(
+              '⚠️ Đã lưu Tag ID & Số lượng. Vị trí (Bin) mới CHƯA áp dụng vì backend cloud chưa deploy migration mới — nhờ admin chạy xong backend-deploy rồi sửa lại Bin.',
+            );
+            onRowUpdated?.();
+            return;
+          }
+          onRowUpdated?.();
+          closeEditModal();
+          return;
+        }
+      }
+      if (error || (data as { ok?: unknown } | null)?.ok !== true) {
+        setEditNotice(`❌ Lỗi cập nhật: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
       } else {
         onRowUpdated?.();
         closeEditModal();

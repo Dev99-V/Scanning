@@ -28,6 +28,16 @@
 
 ## Nhật ký
 
+### [2026-09-15] Fallback schema-cache khi cloud chưa deploy migration p_new_bin
+
+- **Khu vực**: Frontend Bảng 1 (`ReconciliationTable.tsx` modal bút sửa)
+- **Triệu chứng**: sau khi thêm `p_new_bin`, bản cloud (chưa deploy migration vì deploy kẹt ở token) báo `Could not find the function public.update_scanned_tag_id(...) in the schema cache`, chặn luôn cả sửa Tag/SL.
+- **Nguyên nhân gốc**: frontend gửi tham số mới mà PostgREST cloud chưa có trong schema cache — contract frontend đi trước backend 1 nhịp.
+- **Cách sửa**: `handleConfirmEdit` thử contract mới trước; nếu lỗi chứa `schema cache`/`Could not find the function` thì tự thử lại contract cũ (không `p_new_bin`). Tag/SL vẫn lưu; nếu Bin có đổi thì giữ modal mở + notice rõ "backend cloud chưa deploy migration — sửa lại Bin sau".
+- **Bằng chứng đã hết lỗi**: `vitest` 28 files 133/133 PASS (mới 1 test fallback: lần 1 schema-cache miss → lần 2 không `p_new_bin` + notice backend); `tsc -b` exit 0; `oxlint` sạch; `vite build` OK.
+- **Cách phòng tránh lần sau**: mọi RPC thêm param mới đều phải có fallback contract cũ ở frontend cho tới khi xác nhận cloud đã `db push` xong; deploy backend xong mới được coi là hoàn tất tính năng.
+- **Liên quan**: migration `20260915090000_update_scanned_tag_id_add_bin.sql`; `state.json:pending_contract_changes(rpc_additive_bin_edit)` vẫn chờ push cloud.
+
 ### [2026-09-15] Nhập kho nhanh Bảng 2 (+), sửa Bin nhanh Bảng 1, xóa dòng nguồn Bảng 2
 
 - **Khu vực**: RPC `update_scanned_tag_id` (migration `20260915090000_update_scanned_tag_id_add_bin.sql`), Frontend (`ReconciliationTable.tsx`, `ReferenceDataTable.tsx`, `useReferenceMap.ts`, `App.tsx`)

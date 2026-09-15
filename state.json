@@ -158,5 +158,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-15: Nhập kho nhanh Bảng 2 (nút + -> modal xác nhận 1 lần Tag/Bin/Qty -> scan-submit/resolve-duplicate, đối chiếu chuẩn), sửa Bin nhanh ở modal bút Bảng 1 (RPC thêm p_new_bin OPTIONAL, migration 20260915090000), nút xóa dòng nguồn Bảng 2 (delete_reference_stock). Verify: oxlint sạch, tsc exit 0, vitest 28 files 132/132 (6 tests mới), build OK, QC phase 4/5/6 PASS. Đã push main. Cần supabase db push cloud để RPC bin mới live. Chi tiết xem Learning.md entry 2026-09-15."
+  "notes_for_next_session": "2026-09-15 (bổ sung): Frontend Bảng 1 tự fallback contract cũ khi cloud chưa có p_new_bin (hết chặn sửa Tag/SL, Bin đổi báo rõ chờ backend-deploy). Verify: vitest 28 files 133/133, build OK. Deploy backend cloud vẫn kẹt ở token (Authorization failed) — user cần cập nhật lại SUPABASE_ACCESS_TOKEN + thêm SUPABASE_DB_PASSWORD rồi re-run workflow. Chi tiết Learning.md entry fallback schema-cache."
 }

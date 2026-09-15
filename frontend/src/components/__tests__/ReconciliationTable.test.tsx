@@ -215,6 +215,45 @@ describe('ReconciliationTable', () => {
     });
   });
 
+  it('fallback khi backend cloud chưa có p_new_bin: thử lại contract cũ, Tag/SL vẫn lưu', async () => {
+    // Lần 1 (kèm p_new_bin) bị PostgREST từ chối vì cloud chưa deploy migration;
+    // lần 2 (không p_new_bin) thành công — Bin mới báo rõ là chưa áp dụng.
+    rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: {
+          message:
+            'Could not find the function public.update_scanned_tag_id(p_actor_name, p_id, p_new_batch_id, p_new_bin, p_new_qty, p_stock_code) in the schema cache',
+        },
+      })
+      .mockResolvedValueOnce({ data: { ok: true }, error: null });
+    const onRowUpdated = vi.fn();
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-fallback', batch_id: 'TAG_001', qty: 5, bin: 'BIN_OLD' })]}
+        systemByBatch={new Map([['TAG_001', { stock_code: 'SKU_1', qty: 5, bin: 'BIN_OLD' }]])}
+        onRowUpdated={onRowUpdated}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('Bấm để chỉnh sửa vị trí quét'));
+    fireEvent.change(screen.getByLabelText('Vị trí Bin quét mới'), { target: { value: 'BIN_NEW' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledTimes(2);
+      // Lần 2 không còn p_new_bin để khớp contract cũ trên cloud
+      expect(rpc).toHaveBeenLastCalledWith('update_scanned_tag_id', {
+        p_id: 'r-fallback',
+        p_new_batch_id: 'TAG_001',
+        p_stock_code: 'SKU_1',
+        p_new_qty: 5,
+      });
+      expect(onRowUpdated).toHaveBeenCalled();
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent(/backend cloud chưa deploy migration/i);
+  });
+
   it('bấm trực tiếp vào chữ Tag ID cũng mở modal chỉnh sửa', () => {
     render(
       <ReconciliationTable
