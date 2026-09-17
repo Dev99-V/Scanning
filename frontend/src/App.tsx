@@ -17,6 +17,7 @@ import { usePresence } from './hooks/usePresence';
 import { initialForName } from './hooks/presenceHelpers';
 import { useReferenceMap } from './hooks/useReferenceMap';
 import { useScannedData } from './hooks/useScannedData';
+import { useTableJumpKeys } from './hooks/useTableJumpKeys';
 
 export default function App() {
   const { rows, refetch } = useScannedData();
@@ -26,6 +27,8 @@ export default function App() {
   const { identity, saveName, rename } = useIdentity();
   const presence = usePresence(identity);
   const [isOnlineUsersOpen, setIsOnlineUsersOpen] = useState(false);
+  // Phím ↑ lên Bảng 1 / phím ↓ xuống Bảng 2 (bỏ qua khi đang gõ hoặc mở modal).
+  useTableJumpKeys(true);
 
   // Thống kê nhanh trạng thái quét (chống trùng lặp id và nhận diện chính xác tag quét trùng nhiều vị trí)
   const stats = useMemo(() => {
@@ -189,8 +192,6 @@ export default function App() {
 
       {/* Bảng 2: Dữ Liệu Nguồn & Thẻ Import */}
       <div
-        id="bang-2"
-        className="scroll-mt-4"
         onMouseEnter={() => presence.setViewing('table2')}
         onTouchStart={() => presence.setViewing('table2')}
         onFocusCapture={() => presence.setViewing('table2')}

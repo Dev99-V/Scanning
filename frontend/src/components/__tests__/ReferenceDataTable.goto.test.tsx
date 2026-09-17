@@ -45,4 +45,12 @@ describe('ReferenceDataTable — lối tắt về Bảng 1', () => {
     fireEvent.click(btn);
     expect(smoothMock).toHaveBeenCalledWith('bang-1');
   });
+
+  it('anchor #bang-2 nằm thẳng ở bảng dữ liệu nguồn (không phải thẻ import/nhật ký)', async () => {
+    const { container } = render(<ReferenceDataTable scannedRows={[]} />);
+    await screen.findByTestId('btn-goto-table1');
+    const anchor = container.querySelector('#bang-2');
+    expect(anchor).not.toBeNull();
+    expect(anchor?.textContent).toMatch(/Dữ liệu file nguồn/);
+  });
 });

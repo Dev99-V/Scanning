@@ -96,6 +96,12 @@
       "detail": "User yêu cầu 2026-09-17: (1) Bảng 1 mỗi dòng thêm 3 icon copy nhanh từng ô TAG ID / SL quét / BIN quét (chỉ copy đúng 1 giá trị ô đó, Clipboard API + fallback execCommand, tick ✓ 1.2s); (2) Footer Bảng 1 nút ⬇ Bảng 2 + footer Bảng 2 nút ⬆ Bảng 1, trượt rAF easeInOutCubic 60fps + tôn trọng prefers-reduced-motion, anchor #bang-1/#bang-2. Chỉ frontend, không đổi backend. Verify 2026-09-17: tsc+build PASS, lint PASS, vitest 32 files/141 tests PASS, QC_PHASE5 PASS, QC_PHASE6 PASS.",
       "status": "implemented_2026_09_17",
       "date": "2026-09-17"
+    },
+    {
+      "type": "frontend_only_table_jump_fix",
+      "detail": "User yêu cầu 2026-09-17 (tiếp): (1) Icon copy cột TAG ID gọn lại (flex-nowrap + nút nhỏ text 10px), giữ đúng 1 hàng; (2) Bỏ delay smooth-scroll, nhảy TỨC THÌ tới bảng qua window.scrollTo 2 đối số; (3) Chuyển anchor #bang-2 từ wrapper sang thẳng khối bảng dữ liệu nguồn (bỏ qua thẻ import/nhật ký); (4) Phím ↑ lên Bảng 1 / phím ↓ xuống Bảng 2 qua hook useTableJumpKeys (bỏ qua khi gõ ô nhập/mở modal/kèm Ctrl-Alt-Meta). Chỉ frontend, không đổi backend. Verify: tsc+build PASS, lint PASS, vitest 33 files/146 tests PASS, QC_PHASE5 PASS.",
+      "status": "implemented_2026_09_17",
+      "date": "2026-09-17"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {

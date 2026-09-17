@@ -755,8 +755,9 @@ export default function ReferenceDataTable({
         </div>
       </div>
 
-      {/* Bảng dữ liệu nguồn tra cứu */}
-      <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 shadow-lg">
+      {/* Bảng dữ liệu nguồn tra cứu — anchor #bang-2 nằm thẳng ở đây để nút
+          ⬇ Bảng 2 nhảy tới đúng bảng dữ liệu, không dừng ở thẻ import/nhật ký. */}
+      <div id="bang-2" className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 sm:p-5 shadow-lg scroll-mt-4">
         <div className="mb-4 flex flex-col gap-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
@@ -1222,7 +1223,7 @@ export default function ReferenceDataTable({
                 <button
                   type="button"
                   onClick={() => smoothScrollToElementById('bang-1')}
-                  title="Trượt nhanh về Bảng 1 (danh sách quét & đối chiếu)"
+                  title="Trượt nhanh về Bảng 1 — danh sách quét & đối chiếu (phím ↑)"
                   aria-label="Trượt nhanh về Bảng 1"
                   data-testid="btn-goto-table1"
                   className="rounded-xl border border-cyan-500/40 bg-cyan-950/60 px-3 py-1.5 font-bold text-cyan-300 shadow-sm transition hover:bg-cyan-900 active:scale-95"

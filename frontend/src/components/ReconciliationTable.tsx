@@ -229,10 +229,12 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     return counts;
   }, [rows]);
 
-  // Lọc theo trạng thái và từ khóa tìm kiếm (kèm chống duplicate key)
+  // Lọc theo trạng thái và từ khóa tìm kiếm (kèm chống duplicate key),
+  // sau đó xếp hiển thị A–Z theo Bin quét — áp dụng chung cho mọi Trạng thái,
+  // các cột khác giữ nguyên thứ tự quét ban đầu (sort ổn định, không tiêu chí phụ).
   const filteredRows = React.useMemo(() => {
     const seenIds = new Set<string>();
-    return rows.filter((r) => {
+    const list = rows.filter((r) => {
       if (r?.id) {
         if (seenIds.has(r.id)) return false;
         seenIds.add(r.id);
@@ -260,6 +262,10 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
       }
       return true;
     });
+    list.sort((a, b) =>
+      (a.bin || '').trim().localeCompare((b.bin || '').trim(), 'vi', { numeric: true }),
+    );
+    return list;
   }, [rows, statusFilter, searchTerm, systemByBatch, batchCounts]);
 
   if (rows.length === 0) {
@@ -386,7 +392,9 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
 
                   {/* Tag ID (bấm để sửa hoặc dùng nút ở cột Thao tác) */}
                   <td className="px-3 py-2.5 font-bold text-cyan-300">
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* flex-nowrap + whitespace-nowrap: TAG + icon copy + badge 7055 luôn đúng 1 hàng,
+                        không tràn xuống hàng 2 (bảng đã cuộn ngang, không cần wrap). */}
+                    <div className="flex items-center gap-1 flex-nowrap whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => openEditModal(r)}
@@ -402,7 +410,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                         title={copiedKey === `${r.id}-tag` ? 'Đã sao chép Tag ID!' : 'Sao chép nhanh Tag ID'}
                         aria-label={`Sao chép Tag ID ${r.batch_id}`}
                         data-testid={`copy-tag-${r.id}`}
-                        className="rounded-md border border-transparent px-1 py-0.5 text-[11px] leading-none text-slate-500 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                        className="shrink-0 rounded border border-transparent px-0.5 py-px text-[10px] leading-none text-slate-500 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
                       >
                         {copiedKey === `${r.id}-tag` ? '✓' : '📋'}
                       </button>
@@ -410,7 +418,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                         <span
                           data-testid={`recon-tag-7055-${r.batch_id}`}
                           title="Tag in thêm 7055"
-                          className="inline-flex items-center gap-1 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-purple-300 shadow-sm"
+                          className="shrink-0 inline-flex items-center gap-1 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-extrabold tracking-wide text-purple-300 shadow-sm"
                         >
                           <span>🏷️ 7055</span>
                         </span>
@@ -594,7 +602,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
           <button
             type="button"
             onClick={() => smoothScrollToElementById('bang-2')}
-            title="Trượt nhanh xuống Bảng 2 (dữ liệu file nguồn)"
+            title="Trượt nhanh xuống Bảng 2 — dữ liệu file nguồn (phím ↓)"
             aria-label="Trượt nhanh xuống Bảng 2"
             data-testid="btn-goto-table2"
             className="rounded-xl border border-cyan-500/40 bg-cyan-950/60 px-3 py-1.5 font-bold text-cyan-300 shadow-sm transition hover:bg-cyan-900 active:scale-95"

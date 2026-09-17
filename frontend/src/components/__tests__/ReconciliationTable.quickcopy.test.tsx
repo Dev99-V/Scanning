@@ -64,4 +64,19 @@ describe('ReconciliationTable — copy nhanh + lối tắt Bảng 2', () => {
     fireEvent.click(btn);
     expect(smoothMock).toHaveBeenCalledWith('bang-2');
   });
+
+  it('hiển thị xếp A–Z theo Bin quét, áp dụng chung mọi Trạng thái', () => {
+    render(
+      <ReconciliationTable
+        rows={[
+          row({ id: 'r-c', batch_id: 'TAG_C', bin: 'C30', status: 'bin_mismatch' }),
+          row({ id: 'r-a', batch_id: 'TAG_A', bin: 'A10', status: 'ok' }),
+          row({ id: 'r-b', batch_id: 'TAG_B', bin: 'B20', status: 'qty_mismatch' }),
+        ]}
+        systemByBatch={new Map()}
+      />,
+    );
+    const rendered = screen.getAllByTestId(/^recon-row-/).map((tr) => tr.getAttribute('data-testid'));
+    expect(rendered).toEqual(['recon-row-r-a', 'recon-row-r-b', 'recon-row-r-c']);
+  });
 });
