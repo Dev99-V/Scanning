@@ -593,3 +593,19 @@
 - **Bằng chứng đã hết lỗi**: `pg_proc` giờ là `update_scanned_tag_id(uuid,text,text,numeric,text,text)`; `schema_migrations` đủ 16 versions; RPC mới id giả → `HTTP 200 {"ok":false,"error":"not_found"}` (hết `PGRST202`); `state.json:pending_contract_changes(rpc_additive_bin_edit)` → `applied_cloud_2026_09_16`.
 - **Cách phòng tránh lần sau**: CI backend-deploy bắt buộc đủ 3 secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, `SUPABASE_DB_PASSWORD`); lỗi `PGRST202` sau thêm param RPC = kiểm tra migration trên cloud trước khi nghi key/RLS; lần sau ưu tiên fix secret + chạy lại workflow chuẩn thay vì hotfix tay.
 - **Liên quan**: `state.json:notes_for_next_session` 2026-09-16; BẢO MẬT: token `sbp_` đã dùng có quyền chạy SQL + đọc keys → user phải rotate ngay.
+
+### [2026-09-17] Mất online + mất khóa dòng sau 1 thời gian (realtime chết im, REST vẫn sống)
+
+- **Khu vực**: Frontend realtime (`usePresence.ts`, `useScannedData.ts`, `useReferenceMap.ts`, `ReferenceDataTable.tsx`, `useAuditLog.ts`, `lib/supabase.ts`)
+- **Triệu chứng**: realtime chạy lúc đầu, sau 1 thời gian thao tác thì avatar online biến mất, khóa mềm dòng mất theo; nhưng quét/sửa/xóa vẫn chạy bình thường (đi bằng REST/RPC nên không ai phát hiện realtime đã chết).
+- **Nguyên nhân gốc** (đối chiếu code, không phải đoán mạng):
+  1. Mọi channel `.subscribe()` chay, không xử lý `CLOSED/TIMED_OUT/CHANNEL_ERROR` → socket rớt (wifi kho roaming, PDA sleep, NAT timeout) là chết im, không nối lại.
+  2. Presence chỉ `track()` 1 lần lúc `SUBSCRIBED` đầu; heartbeat sau khi rớt bị `.catch(()=>undefined)` nuốt; sweep đọc `presenceState()` local cũ → sau 90s stale (`PRESENCE_STALE_MS`) là cả dàn avatar rớt hàng loạt.
+  3. Không refetch bù sau nối lại → event mất trong lúc rớt là mất vĩnh viễn tới khi F5. Header còn ghi cứng `● Đang online` nên người dùng tưởng vẫn realtime.
+- **Cách sửa** (chỉ frontend, không đổi contract backend):
+  1. Mới `frontend/src/lib/realtime.ts`: `resilientSubscribe` (tự nối lại backoff 1s→15s, `onSubscribed` track lại presence, `onReconnect` refetch bù, health gom toàn app, bắt `visibilitychange/online/offline`) + tương thích mock test cũ (vẫn gọi `channel.on(...)` rồi `.subscribe(cb)`).
+  2. Tích hợp vào cả 5 kênh (presence + scanned_data + refmap + reftable Bảng 2 + audit); presence track lại ngay mỗi lần SUBSCRIBED.
+  3. Mới `ConnectionBadge.tsx` trên header hiện trạng thái thật (`● Realtime` / `● Đang kết nối...` / `● Đang nối lại...`).
+- **Bằng chứng đã hết lỗi**: `tsc -b` exit 0; `oxlint` sạch; `vitest` 35 files/156 tests PASS (mới 2 files/9 tests: backoff, health, retry→reconnect→refetch, presence 3 bindings, badge 3 trạng thái); `vite build` OK; QC_PHASE4/5/6 PASS.
+- **Cách phòng tránh lần sau**: mọi channel realtime mới bắt buộc đi qua `resilientSubscribe` (có `onReconnect` refetch bù); không bao giờ `.subscribe()` chay; không hiển thị trạng thái online bằng chữ cứng.
+- **Liên quan**: Plan.md §5 (Realtime); Skills B/C; `state.json:pending_contract_changes(frontend_only_realtime_resilient)`.

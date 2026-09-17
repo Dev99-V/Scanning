@@ -8,6 +8,7 @@
 // (pg_advisory_xact_lock — Plan §5), presence chỉ khóa mềm + hiển thị.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { resilientSubscribe } from '../lib/realtime';
 import {
   PRESENCE_TOPIC,
   editorsOf,
@@ -58,15 +59,16 @@ export function usePresence(identity: PresenceIdentity | null): UsePresenceApi {
       return;
     }
     let cancelled = false;
-    const channel = supabase.channel(PRESENCE_TOPIC, {
-      config: { presence: { key: identity.sessionId } },
-    });
-    channelRef.current = channel;
+    // Channel thật được tạo bên trong resilientSubscribe (để nối lại được);
+    // giữ ref tới channel hiện hành cho track/presenceState/snapshot.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let liveChannel: any = null;
+    const channelTopic = PRESENCE_TOPIC;
 
     const snapshot = () => {
-      if (cancelled) return;
+      if (cancelled || !liveChannel) return;
       try {
-        const raw = channel.presenceState() as Record<string, unknown>;
+        const raw = liveChannel.presenceState() as Record<string, unknown>;
         setPeers(parsePresenceState(raw, identity.sessionId));
       } catch {
         /* giữ danh sách cũ khi parse lỗi */
@@ -74,28 +76,55 @@ export function usePresence(identity: PresenceIdentity | null): UsePresenceApi {
     };
 
     const trackCurrent = () => {
-      if (cancelled) return;
+      if (cancelled || !liveChannel) return;
       const me = identityRef.current;
       if (!me) return;
-      void channel
-        .track({
+      try {
+        const r = liveChannel.track({
           sessionId: me.sessionId,
           name: me.name,
           color: me.color,
           viewing: stateRef.current.viewing,
           editing: stateRef.current.editing,
           updatedAt: Date.now(),
-        })
-        .catch(() => undefined);
+        }) as unknown;
+        if (r && typeof (r as Promise<unknown>).catch === 'function') {
+          (r as Promise<unknown>).catch(() => undefined);
+        }
+      } catch {
+        /* resilientSubscribe sẽ nối lại khi channel chết */
+      }
     };
 
-    channel
-      .on('presence', { event: 'sync' }, snapshot)
-      .on('presence', { event: 'join' }, snapshot)
-      .on('presence', { event: 'leave' }, snapshot)
-      .subscribe((status) => {
-        if (!cancelled && status === 'SUBSCRIBED') trackCurrent();
-      });
+    // resilientSubscribe tự nối lại khi CLOSED/TIMED_OUT/CHANNEL_ERROR +
+    // track lại ngay khi SUBSCRIBED (kể cả lần đầu) — trước đây chỉ track 1
+    // lần đầu nên heartbeat sau khi rớt mạng chết im, avatar mất hàng loạt.
+    const cleanupChannel = resilientSubscribe({
+      id: 'presence',
+      createChannel: () => {
+        const ch = supabase.channel(channelTopic, {
+          config: { presence: { key: identity.sessionId } },
+        });
+        liveChannel = ch;
+        return ch;
+      },
+      bindings: [
+        { type: 'presence', event: 'sync', handler: (() => snapshot()) as (payload: never) => void },
+        { type: 'presence', event: 'join', handler: (() => snapshot()) as (payload: never) => void },
+        { type: 'presence', event: 'leave', handler: (() => snapshot()) as (payload: never) => void },
+      ],
+      onSubscribed: () => {
+        trackCurrent();
+        // snapshot sau 1 nhịp để server kịp gom presence các tab khác.
+        window.setTimeout(snapshot, 300);
+      },
+    });
+    channelRef.current = {
+      track: () =>
+        Promise.resolve().then(() => {
+          trackCurrent();
+        }),
+    };
 
     const heartbeat = window.setInterval(trackCurrent, HEARTBEAT_MS);
     // Quét định kỳ để loại peer stale khi server chưa kịp kick (rớt mạng lặng).
@@ -106,8 +135,8 @@ export function usePresence(identity: PresenceIdentity | null): UsePresenceApi {
       window.clearInterval(heartbeat);
       window.clearInterval(sweep);
       channelRef.current = null;
-      void channel.untrack?.().catch(() => undefined);
-      void supabase.removeChannel?.(channel);
+      liveChannel = null;
+      cleanupChannel();
     };
   }, [identity?.sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 

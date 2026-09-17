@@ -3,6 +3,7 @@
 // subscription postgres_changes (INSERT/UPDATE/DELETE) + fetch đầu kỳ.
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { resilientSubscribe } from '../lib/realtime';
 import type { ScanRow } from '../lib/types';
 
 export function useScannedData() {
@@ -62,51 +63,65 @@ export function useScannedData() {
     }
     void load();
 
-    // Dùng tên channel riêng biệt kèm timestamp để tránh bị chồng lấn listener khi re-mount
+    // Dùng tên channel riêng biệt kèm timestamp để tránh bị chồng lấn listener khi re-mount.
+    // resilientSubscribe giữ đúng topic này cho mọi lần nối lại trong cùng 1 mount.
     const channelTopic = `scanned_data_changes_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const channel = supabase
-      .channel(channelTopic)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'scanned_data' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const incoming = payload.new as ScanRow;
-            if (!incoming?.id) return;
-            setRows((prev) => {
-              // Chống dup: nếu dòng này đã được nạp qua refetch() hoặc event lặp thì cập nhật thay vì thêm mới
-              const existingIdx = prev.findIndex((r) => r.id === incoming.id);
-              if (existingIdx !== -1) {
-                const next = [...prev];
-                next[existingIdx] = incoming;
-                return next;
-              }
-              return [incoming, ...prev];
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            const updated = payload.new as ScanRow;
-            if (!updated?.id) return;
-            setRows((prev) => {
-              const existingIdx = prev.findIndex((r) => r.id === updated.id);
-              if (existingIdx !== -1) {
-                const next = [...prev];
-                next[existingIdx] = updated;
-                return next;
-              }
-              return [updated, ...prev];
-            });
-          } else if (payload.eventType === 'DELETE') {
-            const gone = payload.old as { id: string };
-            if (!gone?.id) return;
-            setRows((prev) => prev.filter((r) => r.id !== gone.id));
+    const onPayload = (payload: {
+      eventType: string;
+      new?: unknown;
+      old?: unknown;
+    }) => {
+      if (payload.eventType === 'INSERT') {
+        const incoming = payload.new as ScanRow;
+        if (!incoming?.id) return;
+        setRows((prev) => {
+          // Chống dup: nếu dòng này đã được nạp qua refetch() hoặc event lặp thì cập nhật thay vì thêm mới
+          const existingIdx = prev.findIndex((r) => r.id === incoming.id);
+          if (existingIdx !== -1) {
+            const next = [...prev];
+            next[existingIdx] = incoming;
+            return next;
           }
+          return [incoming, ...prev];
+        });
+      } else if (payload.eventType === 'UPDATE') {
+        const updated = payload.new as ScanRow;
+        if (!updated?.id) return;
+        setRows((prev) => {
+          const existingIdx = prev.findIndex((r) => r.id === updated.id);
+          if (existingIdx !== -1) {
+            const next = [...prev];
+            next[existingIdx] = updated;
+            return next;
+          }
+          return [updated, ...prev];
+        });
+      } else if (payload.eventType === 'DELETE') {
+        const gone = payload.old as { id: string };
+        if (!gone?.id) return;
+        setRows((prev) => prev.filter((r) => r.id !== gone.id));
+      }
+    };
+    // Tự nối lại khi socket rớt + refetch bù event mất trong lúc rớt mạng.
+    const cleanup = resilientSubscribe({
+      id: 'scanned_data',
+      createChannel: () => supabase.channel(channelTopic),
+      bindings: [
+        {
+          type: 'postgres_changes',
+          event: '*',
+          filter: { event: '*', schema: 'public', table: 'scanned_data' },
+          handler: onPayload as (payload: never) => void,
         },
-      )
-      .subscribe();
+      ],
+      onReconnect: () => {
+        void fetchData();
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (channel) void supabase.removeChannel?.(channel);
+      cleanup();
     };
   }, [fetchData]);
 

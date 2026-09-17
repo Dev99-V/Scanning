@@ -4,6 +4,7 @@
 // - Bảng 2: Dữ liệu nguồn tra cứu + Thẻ import file mẫu Stock Balance With Batch.xlsx.
 // - Cả 2 bảng cuộn chuột 100 dòng tự động tải tiếp, tối ưu cho cả Mobile PDA lẫn PC.
 import { useMemo, useState } from 'react';
+import ConnectionBadge from './components/ConnectionBadge';
 import ExportButton from './components/ExportButton';
 import NameGateModal from './components/NameGateModal';
 import OnlineUsersModal from './components/OnlineUsersModal';
@@ -98,6 +99,9 @@ export default function App() {
               <div className="leading-tight">
                 <p className="text-xs font-bold text-white">{identity.name}</p>
                 <p className="text-[10px] text-emerald-400">● Đang online</p>
+                <div className="mt-1">
+                  <ConnectionBadge />
+                </div>
               </div>
               <button
                 type="button"

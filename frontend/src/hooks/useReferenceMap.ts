@@ -3,6 +3,7 @@
 // nguồn (Plan.md §4.4: không hiển thị lại Tag ID nguồn trên UI đối chiếu).
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { resilientSubscribe } from '../lib/realtime';
 import type { ReferenceRow } from '../lib/types';
 
 export interface SystemNumbers {
@@ -99,45 +100,52 @@ export function useReferenceMap() {
     // thêm dòng nguồn hoặc import file mới — trước đây hook chỉ load 1 lần
     // lúc mount nên các máy khác im lặng tới khi F5.
     // (Cần kèm migration đưa reference_stock vào publication supabase_realtime.)
+    // resilientSubscribe: tự nối lại + refetch bù khi socket rớt.
     const channelTopic = `reference_stock_changes_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const channel = supabase
-      .channel(channelTopic)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reference_stock' },
-        (payload) => {
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const incoming = payload.new as ReferenceRow & { tag_7055?: boolean };
-            const cleanId = (incoming?.batch_id || '').trim();
-            if (!cleanId) return;
-            setByBatch((prev) => {
-              const next = new Map(prev);
-              next.set(cleanId, {
-                stock_code: incoming.stock_code,
-                qty: incoming.qty,
-                bin: incoming.bin,
-                tag_7055: Boolean(incoming.tag_7055),
-              });
-              return next;
-            });
-          } else if (payload.eventType === 'DELETE') {
-            const gone = payload.old as { batch_id?: string };
-            const cleanId = (gone?.batch_id || '').trim();
-            if (!cleanId) return;
-            setByBatch((prev) => {
-              if (!prev.has(cleanId)) return prev;
-              const next = new Map(prev);
-              next.delete(cleanId);
-              return next;
-            });
-          }
-        },
-      )
-      .subscribe();
-
-    return () => {
-      if (channel) void supabase.removeChannel?.(channel);
+    const onPayload = (payload: { eventType: string; new?: unknown; old?: unknown }) => {
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const incoming = payload.new as ReferenceRow & { tag_7055?: boolean };
+        const cleanId = (incoming?.batch_id || '').trim();
+        if (!cleanId) return;
+        setByBatch((prev) => {
+          const next = new Map(prev);
+          next.set(cleanId, {
+            stock_code: incoming.stock_code,
+            qty: incoming.qty,
+            bin: incoming.bin,
+            tag_7055: Boolean(incoming.tag_7055),
+          });
+          return next;
+        });
+      } else if (payload.eventType === 'DELETE') {
+        const gone = payload.old as { batch_id?: string };
+        const cleanId = (gone?.batch_id || '').trim();
+        if (!cleanId) return;
+        setByBatch((prev) => {
+          if (!prev.has(cleanId)) return prev;
+          const next = new Map(prev);
+          next.delete(cleanId);
+          return next;
+        });
+      }
     };
+    const cleanup = resilientSubscribe({
+      id: 'reference_stock_map',
+      createChannel: () => supabase.channel(channelTopic),
+      bindings: [
+        {
+          type: 'postgres_changes',
+          event: '*',
+          filter: { event: '*', schema: 'public', table: 'reference_stock' },
+          handler: onPayload as (payload: never) => void,
+        },
+      ],
+      onReconnect: () => {
+        void load();
+      },
+    });
+
+    return cleanup;
   }, [load]);
 
   return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin, addBatch, removeBatch };

@@ -102,6 +102,12 @@
       "detail": "User yêu cầu 2026-09-17 (tiếp): (1) Icon copy cột TAG ID gọn lại (flex-nowrap + nút nhỏ text 10px), giữ đúng 1 hàng; (2) Bỏ delay smooth-scroll, nhảy TỨC THÌ tới bảng qua window.scrollTo 2 đối số; (3) Chuyển anchor #bang-2 từ wrapper sang thẳng khối bảng dữ liệu nguồn (bỏ qua thẻ import/nhật ký); (4) Phím ↑ lên Bảng 1 / phím ↓ xuống Bảng 2 qua hook useTableJumpKeys (bỏ qua khi gõ ô nhập/mở modal/kèm Ctrl-Alt-Meta). Chỉ frontend, không đổi backend. Verify: tsc+build PASS, lint PASS, vitest 33 files/146 tests PASS, QC_PHASE5 PASS.",
       "status": "implemented_2026_09_17",
       "date": "2026-09-17"
+    },
+    {
+      "type": "frontend_only_realtime_resilient",
+      "detail": "Fix mất online sau 1 thời gian (2026-09-17): mới frontend/src/lib/realtime.ts (resilientSubscribe: tự nối lại backoff 1s-15s, refetch bù khi SUBSCRIBED trở lại, health gom toàn app, bắt visibilitychange/online/offline) + tích hợp vào 5 kênh (presence, scanned_data, refmap, reftable Bảng 2, audit) + badge ConnectionBadge thật trên header thay chữ cứng. Chỉ frontend, không đổi contract backend. Verify: tsc PASS, lint PASS, vitest 35 files/156 tests PASS, QC_PHASE4/5/6 PASS.",
+      "status": "implemented_2026_09_17",
+      "date": "2026-09-17"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {

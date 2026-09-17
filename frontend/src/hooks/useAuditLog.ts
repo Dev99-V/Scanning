@@ -3,6 +3,7 @@
 // và cắt trần CLIENT_CAP để state không phình khi bảng log lớn dần.
 import { useCallback, useEffect, useState } from 'react';
 import type { AuditEntry } from '../lib/auditLog';
+import { resilientSubscribe } from '../lib/realtime';
 import { supabase } from '../lib/supabase';
 
 export const AUDIT_LATEST_LIMIT = 300;
@@ -42,26 +43,36 @@ export function useAuditLog() {
     })();
 
     const channelTopic = `audit_log_changes_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const channel = supabase
-      .channel(channelTopic)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'scan_audit_log' },
-        (payload) => {
-          if (cancelled) return;
-          const incoming = payload.new as AuditEntry;
-          if (!incoming?.id) return;
-          setEntries((prev) => {
-            if (prev.some((e) => e.id === incoming.id)) return prev;
-            return [incoming, ...prev].slice(0, CLIENT_CAP);
-          });
+    const onPayload = (payload: { eventType: string; new?: unknown }) => {
+      if (cancelled) return;
+      if (payload.eventType !== 'INSERT') return;
+      const incoming = payload.new as AuditEntry;
+      if (!incoming?.id) return;
+      setEntries((prev) => {
+        if (prev.some((e) => e.id === incoming.id)) return prev;
+        return [incoming, ...prev].slice(0, CLIENT_CAP);
+      });
+    };
+    // Tự nối lại + refetch bù khi socket rớt (kẻo mất log lúc rớt mạng).
+    const cleanup = resilientSubscribe({
+      id: 'scan_audit_log',
+      createChannel: () => supabase.channel(channelTopic),
+      bindings: [
+        {
+          type: 'postgres_changes',
+          event: 'INSERT',
+          filter: { event: 'INSERT', schema: 'public', table: 'scan_audit_log' },
+          handler: onPayload as (payload: never) => void,
         },
-      )
-      .subscribe();
+      ],
+      onReconnect: () => {
+        void fetchData();
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (channel) void supabase.removeChannel?.(channel);
+      cleanup();
     };
   }, [fetchData]);
 

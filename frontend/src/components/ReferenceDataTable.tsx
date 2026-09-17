@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table2RowKey } from '../hooks/presenceHelpers';
+import { resilientSubscribe } from '../lib/realtime';
 import { smoothScrollToElementById } from '../lib/smoothScroll';
 import { resolveDuplicate, submitScan } from '../lib/scanApi';
 import { supabase } from '../lib/supabase';
@@ -593,45 +594,55 @@ export default function ReferenceDataTable({
     // Streaming đa người cho chính danh sách Bảng 2: máy khác sửa SL/Bin,
     // thêm dòng hoặc import file mới thì bảng này tự cập nhật, không cần F5.
     // (Cần kèm migration đưa reference_stock vào publication supabase_realtime.)
+    // resilientSubscribe: tự nối lại + tải bù toàn bảng khi socket rớt
+    // (import xóa-nạp lại hàng nghìn dòng mà mất event là lệch im).
     const channelTopic = `reference_table_rows_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const channel = supabase
-      .channel(channelTopic)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reference_stock' },
-        (payload) => {
-          if (cancelled) return;
-          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            const incoming = payload.new as ReferenceLine;
-            const cleanId = (incoming?.batch_id || '').trim();
-            if (!cleanId) return;
-            setRows((prev) => {
-              const idx = prev.findIndex((r) => (r.batch_id || '').trim() === cleanId);
-              if (idx !== -1) {
-                const next = [...prev];
-                // Giữ vết cũ đang hiển thị nếu payload realtime chưa kèm (import/sửa từ máy khác).
-                next[idx] = {
-                  ...incoming,
-                  previous_bin: incoming.previous_bin ?? next[idx].previous_bin ?? null,
-                  previous_qty: incoming.previous_qty ?? next[idx].previous_qty ?? null,
-                };
-                return next;
-              }
-              return [incoming, ...prev];
-            });
-          } else if (payload.eventType === 'DELETE') {
-            const gone = payload.old as { batch_id?: string };
-            const cleanId = (gone?.batch_id || '').trim();
-            if (!cleanId) return;
-            setRows((prev) => prev.filter((r) => (r.batch_id || '').trim() !== cleanId));
+    const onPayload = (payload: { eventType: string; new?: unknown; old?: unknown }) => {
+      if (cancelled) return;
+      if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+        const incoming = payload.new as ReferenceLine;
+        const cleanId = (incoming?.batch_id || '').trim();
+        if (!cleanId) return;
+        setRows((prev) => {
+          const idx = prev.findIndex((r) => (r.batch_id || '').trim() === cleanId);
+          if (idx !== -1) {
+            const next = [...prev];
+            // Giữ vết cũ đang hiển thị nếu payload realtime chưa kèm (import/sửa từ máy khác).
+            next[idx] = {
+              ...incoming,
+              previous_bin: incoming.previous_bin ?? next[idx].previous_bin ?? null,
+              previous_qty: incoming.previous_qty ?? next[idx].previous_qty ?? null,
+            };
+            return next;
           }
+          return [incoming, ...prev];
+        });
+      } else if (payload.eventType === 'DELETE') {
+        const gone = payload.old as { batch_id?: string };
+        const cleanId = (gone?.batch_id || '').trim();
+        if (!cleanId) return;
+        setRows((prev) => prev.filter((r) => (r.batch_id || '').trim() !== cleanId));
+      }
+    };
+    const cleanupChannel = resilientSubscribe({
+      id: 'reference_table_rows',
+      createChannel: () => supabase.channel(channelTopic),
+      bindings: [
+        {
+          type: 'postgres_changes',
+          event: '*',
+          filter: { event: '*', schema: 'public', table: 'reference_stock' },
+          handler: onPayload as (payload: never) => void,
         },
-      )
-      .subscribe();
+      ],
+      onReconnect: () => {
+        void load();
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (channel) void supabase.removeChannel?.(channel);
+      cleanupChannel();
     };
   }, [refreshTrigger]);
 
