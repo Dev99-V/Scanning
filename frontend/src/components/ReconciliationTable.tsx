@@ -5,6 +5,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table1RowKey } from '../hooks/presenceHelpers';
+import { copyText } from '../lib/copyText';
+import { smoothScrollToElementById } from '../lib/smoothScroll';
 import type { ScanStatus } from '../lib/scanApi';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
@@ -54,6 +56,21 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
   const [manualStockCode, setManualStockCode] = useState('');
   const [isSavingTag, setIsSavingTag] = useState(false);
   const [editNotice, setEditNotice] = useState<string | null>(null);
+
+  // Copy nhanh từng ô: TAG ID / SL quét / Bin quét (chỉ copy đúng 1 giá trị của ô đó).
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => {
+    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+  }, []);
+
+  async function handleCopyCell(value: string, key: string) {
+    const ok = await copyText(value);
+    if (!ok) return;
+    setCopiedKey(key);
+    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopiedKey(null), 1200);
+  }
 
   function openEditModal(r: ScanRow) {
     // Khóa mềm: dòng đang bị người khác sửa thì không cho mở modal.
@@ -379,6 +396,16 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                       >
                         {r.batch_id}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyCell(String(r.batch_id), `${r.id}-tag`)}
+                        title={copiedKey === `${r.id}-tag` ? 'Đã sao chép Tag ID!' : 'Sao chép nhanh Tag ID'}
+                        aria-label={`Sao chép Tag ID ${r.batch_id}`}
+                        data-testid={`copy-tag-${r.id}`}
+                        className="rounded-md border border-transparent px-1 py-0.5 text-[11px] leading-none text-slate-500 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                      >
+                        {copiedKey === `${r.id}-tag` ? '✓' : '📋'}
+                      </button>
                       {Boolean(sys?.tag_7055) && (
                         <span
                           data-testid={`recon-tag-7055-${r.batch_id}`}
@@ -393,23 +420,35 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
 
                   {/* Số lượng quét (bấm để chỉnh sửa hoặc dùng nút ở cột Thao tác) */}
                   <td className="px-3 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(r)}
-                      disabled={Boolean(lockHolder)}
-                      title={lockHolder ? `${lockHolder.name} đang thao tác dòng này` : 'Bấm để chỉnh sửa lượt quét'}
-                      className="hover:underline transition text-right font-bold inline-block disabled:no-underline disabled:opacity-60"
-                    >
-                      <span
-                        className={
-                          isQtyDiff
-                            ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
-                            : 'font-bold text-white'
-                        }
+                    <span className="inline-flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(r)}
+                        disabled={Boolean(lockHolder)}
+                        title={lockHolder ? `${lockHolder.name} đang thao tác dòng này` : 'Bấm để chỉnh sửa lượt quét'}
+                        className="hover:underline transition text-right font-bold inline-block disabled:no-underline disabled:opacity-60"
                       >
-                        {r.qty}
-                      </span>
-                    </button>
+                        <span
+                          className={
+                            isQtyDiff
+                              ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                              : 'font-bold text-white'
+                          }
+                        >
+                          {r.qty}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyCell(String(r.qty), `${r.id}-qty`)}
+                        title={copiedKey === `${r.id}-qty` ? 'Đã sao chép SL quét!' : 'Sao chép nhanh SL quét'}
+                        aria-label={`Sao chép SL quét ${r.qty} của ${r.batch_id}`}
+                        data-testid={`copy-qty-${r.id}`}
+                        className="rounded-md border border-transparent px-1 py-0.5 text-[11px] leading-none text-slate-500 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                      >
+                        {copiedKey === `${r.id}-qty` ? '✓' : '📋'}
+                      </button>
+                    </span>
                   </td>
 
                   {/* Số lượng hệ thống (màu đỏ cảnh báo nếu chênh lệch) */}
@@ -427,23 +466,35 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
 
                   {/* Bin quét (màu đỏ cảnh báo nếu sai lệch, bấm để sửa nhanh) */}
                   <td className="px-3 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(r)}
-                      disabled={Boolean(lockHolder)}
-                      title={lockHolder ? `${lockHolder.name} đang thao tác dòng này` : 'Bấm để chỉnh sửa vị trí quét'}
-                      className="hover:underline transition text-right font-bold inline-block disabled:no-underline disabled:opacity-60"
-                    >
-                      <span
-                        className={
-                          isBinDiff
-                            ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
-                            : 'font-semibold text-slate-200'
-                        }
+                    <span className="inline-flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(r)}
+                        disabled={Boolean(lockHolder)}
+                        title={lockHolder ? `${lockHolder.name} đang thao tác dòng này` : 'Bấm để chỉnh sửa vị trí quét'}
+                        className="hover:underline transition text-right font-bold inline-block disabled:no-underline disabled:opacity-60"
                       >
-                        {r.bin}
-                      </span>
-                    </button>
+                        <span
+                          className={
+                            isBinDiff
+                              ? 'inline-block rounded border border-rose-500/60 bg-rose-950/60 px-2 py-0.5 font-bold text-rose-400 shadow-sm'
+                              : 'font-semibold text-slate-200'
+                          }
+                        >
+                          {r.bin}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopyCell(String(r.bin), `${r.id}-bin`)}
+                        title={copiedKey === `${r.id}-bin` ? 'Đã sao chép Bin quét!' : 'Sao chép nhanh Bin quét'}
+                        aria-label={`Sao chép Bin quét ${r.bin} của ${r.batch_id}`}
+                        data-testid={`copy-bin-${r.id}`}
+                        className="rounded-md border border-transparent px-1 py-0.5 text-[11px] leading-none text-slate-500 transition hover:border-cyan-500/40 hover:bg-cyan-950/60 hover:text-cyan-300 active:scale-95"
+                      >
+                        {copiedKey === `${r.id}-bin` ? '✓' : '📋'}
+                      </button>
+                    </span>
                   </td>
 
                   {/* Bin hệ thống (màu đỏ cảnh báo nếu sai lệch) */}
@@ -521,8 +572,8 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
         </table>
       </div>
 
-      {/* Footer thanh cuộn thông báo */}
-      <div className="flex items-center justify-between px-2 text-[11px] text-slate-400">
+      {/* Footer thanh trạng thái: đếm dòng + tải tiếp + lối tắt trượt xuống Bảng 2 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-2 text-[11px] text-slate-400">
         <span>
           Đang hiển thị <strong className="text-cyan-300">{displayedRows.length}</strong> /{' '}
           <strong className="text-white">{filteredRows.length}</strong> lượt quét
@@ -530,15 +581,27 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
             <span className="text-slate-500"> (Tổng {rows.length})</span>
           )}
         </span>
-        {visibleCount < filteredRows.length && (
+        <div className="flex flex-wrap items-center gap-2">
+          {visibleCount < filteredRows.length && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => Math.min(prev + 100, filteredRows.length))}
+              className="font-bold text-indigo-400 hover:text-indigo-300 transition underline"
+            >
+              Cuộn xuống hoặc bấm tải tiếp 100 dòng (còn {filteredRows.length - visibleCount} dòng)
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setVisibleCount((prev) => Math.min(prev + 100, filteredRows.length))}
-            className="font-bold text-indigo-400 hover:text-indigo-300 transition underline"
+            onClick={() => smoothScrollToElementById('bang-2')}
+            title="Trượt nhanh xuống Bảng 2 (dữ liệu file nguồn)"
+            aria-label="Trượt nhanh xuống Bảng 2"
+            data-testid="btn-goto-table2"
+            className="rounded-xl border border-cyan-500/40 bg-cyan-950/60 px-3 py-1.5 font-bold text-cyan-300 shadow-sm transition hover:bg-cyan-900 active:scale-95"
           >
-            Cuộn xuống hoặc bấm tải tiếp 100 dòng (còn {filteredRows.length - visibleCount} dòng)
+            ⬇ Bảng 2
           </button>
-        )}
+        </div>
       </div>
 
       {/* Modal UI nổi xác nhận xóa khi nhập nhầm */}

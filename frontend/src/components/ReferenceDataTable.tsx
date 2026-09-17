@@ -5,6 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table2RowKey } from '../hooks/presenceHelpers';
+import { smoothScrollToElementById } from '../lib/smoothScroll';
 import { resolveDuplicate, submitScan } from '../lib/scanApi';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
@@ -1199,7 +1200,7 @@ export default function ReferenceDataTable({
               </table>
             </div>
 
-            {/* Footer thanh cuộn thông báo */}
+            {/* Footer thanh trạng thái: đếm dòng + tải tiếp + lối tắt về Bảng 1 */}
             <div className="flex flex-wrap items-center justify-between gap-2 px-2 text-[11px] text-slate-400">
               <span>
                 Đang hiển thị <strong className="text-cyan-300">{displayedRows.length}</strong> /{' '}
@@ -1208,15 +1209,27 @@ export default function ReferenceDataTable({
                   <span className="text-slate-500"> (Tổng nguồn: {rows.length.toLocaleString()} dòng)</span>
                 )}
               </span>
-              {visibleCount < filteredRows.length && (
+              <div className="flex flex-wrap items-center gap-2">
+                {visibleCount < filteredRows.length && (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((prev) => Math.min(prev + 100, filteredRows.length))}
+                    className="font-bold text-indigo-400 hover:text-indigo-300 transition underline"
+                  >
+                    Cuộn xuống hoặc bấm tải tiếp(còn {(filteredRows.length - visibleCount).toLocaleString()} dòng)
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((prev) => Math.min(prev + 100, filteredRows.length))}
-                  className="font-bold text-indigo-400 hover:text-indigo-300 transition underline"
+                  onClick={() => smoothScrollToElementById('bang-1')}
+                  title="Trượt nhanh về Bảng 1 (danh sách quét & đối chiếu)"
+                  aria-label="Trượt nhanh về Bảng 1"
+                  data-testid="btn-goto-table1"
+                  className="rounded-xl border border-cyan-500/40 bg-cyan-950/60 px-3 py-1.5 font-bold text-cyan-300 shadow-sm transition hover:bg-cyan-900 active:scale-95"
                 >
-                  Cuộn xuống hoặc bấm tải tiếp(còn {(filteredRows.length - visibleCount).toLocaleString()} dòng)
+                  ⬆ Bảng 1
                 </button>
-              )}
+              </div>
             </div>
           </div>
         )}

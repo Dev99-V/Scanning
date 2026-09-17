@@ -153,8 +153,9 @@ export default function App() {
 
       {/* Bảng 1: Danh Sách Đã Quét & Đối Chiếu */}
       <section
+        id="bang-1"
         aria-label="Đối chiếu"
-        className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-4 sm:p-5 shadow-xl"
+        className="flex scroll-mt-4 flex-col gap-3 rounded-3xl border border-white/10 bg-slate-900/60 p-4 sm:p-5 shadow-xl"
         onMouseEnter={() => presence.setViewing('table1')}
         onTouchStart={() => presence.setViewing('table1')}
         onFocusCapture={() => presence.setViewing('table1')}
@@ -188,6 +189,8 @@ export default function App() {
 
       {/* Bảng 2: Dữ Liệu Nguồn & Thẻ Import */}
       <div
+        id="bang-2"
+        className="scroll-mt-4"
         onMouseEnter={() => presence.setViewing('table2')}
         onTouchStart={() => presence.setViewing('table2')}
         onFocusCapture={() => presence.setViewing('table2')}

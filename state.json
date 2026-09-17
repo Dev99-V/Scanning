@@ -1,6 +1,6 @@
 {
   "project_name": "pda-scan-reconciliation-system",
-  "last_updated": "2026-09-15",
+  "last_updated": "2026-09-16",
   "read_before_start": [
     "Plan.md",
     "Skills.md",
@@ -16,7 +16,14 @@
     "reference_source_file": "Stock Balance With Batch.xlsx",
     "reference_sheet_name": "Stock Balance With Batch",
     "reference_header_row": 5,
-    "reference_columns": ["Stock Code", "Warehouse", "CREATEDATE", "BATCH", "BIN", "Qty"],
+    "reference_columns": [
+      "Stock Code",
+      "Warehouse",
+      "CREATEDATE",
+      "BATCH",
+      "BIN",
+      "Qty"
+    ],
     "tag_id_field": "BATCH",
     "repo_split_strategy": "B_mono_repo_subagents",
     "concurrency_strategy": "db_row_lock_rpc",
@@ -74,8 +81,8 @@
     },
     {
       "type": "rpc_additive_bin_edit",
-      "detail": "Migration 20260915090000_update_scanned_tag_id_add_bin.sql: update_scanned_tag_id thêm p_new_bin OPTIONAL (NULL=giữ bin cũ, tương thích ngược frontend cũ). Frontend Bảng 1 gửi thêm p_new_bin khi sửa vị trí nhanh. Cần supabase db push lên cloud (CI backend-deploy khi merge main).",
-      "status": "pending_cloud_apply",
+      "detail": "Migration 20260915090000_update_scanned_tag_id_add_bin.sql: update_scanned_tag_id thêm p_new_bin OPTIONAL (NULL=giữ bin cũ, tương thích ngược frontend cũ). Frontend Bảng 1 gửi thêm p_new_bin khi sửa vị trí nhanh. ĐÃ DEPLOY cloud 2026-09-16 (hotfix qua Management API database/query + insert schema_migrations history; verify pg_proc 6 args + RPC fake-id not_found, hết PGRST202). CI backend-deploy chính thức vẫn cần SUPABASE_DB_PASSWORD để các lần sau đi đường chuẩn.",
+      "status": "applied_cloud_2026_09_16",
       "date": "2026-09-15"
     },
     {
@@ -83,6 +90,12 @@
       "detail": "User yêu cầu 2026-09-15: (1) Bảng 2 nút + nhập kho nhanh sang Bảng 1 qua Edge scan-submit/resolve-duplicate hiện có (không đổi contract, đối chiếu chuẩn); (2) Bảng 2 nút xóa dùng RPC delete_reference_stock hiện có. Chỉ frontend, không đổi backend.",
       "status": "frontend_implementing",
       "date": "2026-09-15"
+    },
+    {
+      "type": "frontend_only_quick_copy_scroll",
+      "detail": "User yêu cầu 2026-09-17: (1) Bảng 1 mỗi dòng thêm 3 icon copy nhanh từng ô TAG ID / SL quét / BIN quét (chỉ copy đúng 1 giá trị ô đó, Clipboard API + fallback execCommand, tick ✓ 1.2s); (2) Footer Bảng 1 nút ⬇ Bảng 2 + footer Bảng 2 nút ⬆ Bảng 1, trượt rAF easeInOutCubic 60fps + tôn trọng prefers-reduced-motion, anchor #bang-1/#bang-2. Chỉ frontend, không đổi backend. Verify 2026-09-17: tsc+build PASS, lint PASS, vitest 32 files/141 tests PASS, QC_PHASE5 PASS, QC_PHASE6 PASS.",
+      "status": "implemented_2026_09_17",
+      "date": "2026-09-17"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {
@@ -158,5 +171,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-15 (probe cloud): Key anon/service_role đúng project + đủ quyền (đọc 200, RPC cũ not_found, delete_reference_stock ok, scan-submit reachable). Lỗi schema-cache do migration 20260915090000 CHƯA lên cloud (PGRST202) — fix duy nhất là chạy backend-deploy (cần SUPABASE_ACCESS_TOKEN sbp_ + SUPABASE_DB_PASSWORD). BẢO MẬT: user đã paste sb_secret/anon/service_role lên chat → phải rotate ngay. Chi tiết Learning.md entry probe cloud."
+  "notes_for_next_session": "2026-09-16 (hotfix cloud): Migration 20260915090000 đã apply trực tiếp lên cloud qua Management API (do CI backend-deploy thiếu SUPABASE_DB_PASSWORD nên kẹt ở supabase link). Verify: pg_proc update_scanned_tag_id 6 args + RPC p_new_bin fake-id trả not_found (hết PGRST202) + schema_migrations đủ 16 versions. Modal sửa Bin Bảng 1 giờ lưu Bin thật, không còn notice vàng. VIỆC CÒN LẠI: user bổ sung SUPABASE_DB_PASSWORD vào GitHub Secrets để CI đi đường chuẩn; ROTATE token sbp_ đã dùng để deploy."
 }

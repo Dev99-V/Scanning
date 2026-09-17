@@ -578,3 +578,18 @@
 - **Cách phòng tránh lần sau**: mọi cảnh báo cộng thêm trên Bảng 2 phải là text-level (ô/badge), không thêm nhánh vào `rowBgClass` trừ khi user yêu cầu đổi nền.
 - **Liên quan**: Plan.md §7.3 (Bảng 2), §9 Phase 6.
 
+
+### [2026-09-16] Deploy hotfix migration p_new_bin lên cloud qua Management API (CI kẹt thiếu DB password)
+
+- **Khu vực**: Cloud Supabase `pobabdgyukyufzzxbvsn` — migration `20260915090000_update_scanned_tag_id_add_bin.sql` (RPC `update_scanned_tag_id` + `p_new_bin`)
+- **Triệu chứng**: modal Bảng 1 sửa Bin báo vàng "Đã lưu Tag ID & Số lượng. Vị trí (Bin) mới CHƯA áp dụng vì backend cloud chưa deploy migration mới". User nhờ deploy backend giúp.
+- **Nguyên nhân gốc** (đã xác minh 3 nguồn độc lập):
+  1. `supabase_migrations.schema_migrations` trên cloud chỉ có 15 versions tới `20260909091000`, thiếu `20260915090000`; `pg_proc` chỉ có overload cũ `update_scanned_tag_id(uuid,text,text,numeric,text)`.
+  2. RPC mới (+`p_new_bin`, id giả) → `404 PGRST202 schema cache`; RPC cũ → `200 not_found` (function cũ sống).
+  3. GH Actions `backend-deploy` run `34928599790` fail ở `supabase link`: `Missing value for flag --password` → secret `SUPABASE_DB_PASSWORD` trống nên `db push` không bao giờ chạy.
+- **Cách sửa** (hotfix, không đổi file migration — đúng nội dung versioned đã review):
+  1. POST nguyên văn file `20260915090000...sql` (drops + create or replace 6 args + grant) tới `POST /v1/projects/{ref}/database/query` bằng token `sbp_` user cấp → `201 []`.
+  2. `insert into supabase_migrations.schema_migrations values ('20260915090000','{}','update_scanned_tag_id_add_bin') on conflict do nothing` để `db push` sau này không apply lại.
+- **Bằng chứng đã hết lỗi**: `pg_proc` giờ là `update_scanned_tag_id(uuid,text,text,numeric,text,text)`; `schema_migrations` đủ 16 versions; RPC mới id giả → `HTTP 200 {"ok":false,"error":"not_found"}` (hết `PGRST202`); `state.json:pending_contract_changes(rpc_additive_bin_edit)` → `applied_cloud_2026_09_16`.
+- **Cách phòng tránh lần sau**: CI backend-deploy bắt buộc đủ 3 secrets (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_ID`, `SUPABASE_DB_PASSWORD`); lỗi `PGRST202` sau thêm param RPC = kiểm tra migration trên cloud trước khi nghi key/RLS; lần sau ưu tiên fix secret + chạy lại workflow chuẩn thay vì hotfix tay.
+- **Liên quan**: `state.json:notes_for_next_session` 2026-09-16; BẢO MẬT: token `sbp_` đã dùng có quyền chạy SQL + đọc keys → user phải rotate ngay.
