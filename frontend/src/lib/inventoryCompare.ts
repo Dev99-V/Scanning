@@ -22,35 +22,38 @@ export interface InventoryComparison {
   warnings: string[];
 }
 
-export function compareInventoryRow(
+/** Tổng hợp Bảng 1 theo Tag (dùng chung cho đối chiếu từng dòng + check-tag). */
+export interface Table1Agg {
+  present: boolean;
+  qty: number | null;
+  bins: string[];
+}
+
+export function aggregateTable1(matches: ScanRow[]): Table1Agg {
+  if (matches.length === 0) return { present: false, qty: null, bins: [] };
+  return {
+    present: true,
+    qty: matches.reduce((sum, r) => sum + Number(r.qty || 0), 0),
+    bins: [...new Set(matches.map((r) => (r.bin || '').trim()).filter(Boolean))],
+  };
+}
+
+/** Logic cảnh báo dùng chung — Bảng 3 và check-tag Bảng 1 phải ra cùng kết quả. */
+export function inventoryWarnings(
   row: InventoryRow,
-  scannedRows: ScanRow[],
-  systemByBatch: Map<string, SystemNumbers>,
-): InventoryComparison {
-  const cleanTag = (row.batch_id || '').trim();
-  const table1Matches = scannedRows.filter((r) => (r.batch_id || '').trim() === cleanTag);
-
-  let table1Qty: number | null = null;
-  let table1Bins: string[] = [];
-  if (table1Matches.length > 0) {
-    table1Qty = table1Matches.reduce((sum, r) => sum + Number(r.qty || 0), 0);
-    table1Bins = [...new Set(table1Matches.map((r) => (r.bin || '').trim()).filter(Boolean))];
-  }
-
-  const sys = systemByBatch.get(cleanTag);
-  const table2Qty = sys ? Number(sys.qty) : null;
-  const table2Bin = sys ? (sys.bin || '').trim() || null : null;
-
+  agg: Table1Agg,
+  sys: SystemNumbers | undefined,
+): string[] {
   const warnings: string[] = [];
-  if (table1Qty === null) {
+  if (!agg.present || agg.qty === null) {
     warnings.push('Chưa có ở Bảng 1 (chưa quét đối chiếu)');
   } else {
-    if (Number(row.qty) !== table1Qty) {
-      warnings.push(`Lệch SL vs Bảng 1 (kiểm kê: ${row.qty} / Bảng 1: ${table1Qty})`);
+    if (Number(row.qty) !== agg.qty) {
+      warnings.push(`Lệch SL vs Bảng 1 (kiểm kê: ${row.qty} / Bảng 1: ${agg.qty})`);
     }
     const kkBin = (row.bin || '').trim();
-    if (kkBin && !table1Bins.includes(kkBin)) {
-      warnings.push(`Lệch Bin vs Bảng 1 (kiểm kê: ${row.bin} / Bảng 1: ${table1Bins.join(', ') || '—'})`);
+    if (kkBin && !agg.bins.includes(kkBin)) {
+      warnings.push(`Lệch Bin vs Bảng 1 (kiểm kê: ${row.bin} / Bảng 1: ${agg.bins.join(', ') || '—'})`);
     }
   }
 
@@ -64,16 +67,64 @@ export function compareInventoryRow(
       warnings.push(`Lệch Bin vs hệ thống (kiểm kê: ${row.bin} / HT: ${sys.bin || '—'})`);
     }
   }
+  return warnings;
+}
+
+export function compareInventoryRow(
+  row: InventoryRow,
+  scannedRows: ScanRow[],
+  systemByBatch: Map<string, SystemNumbers>,
+): InventoryComparison {
+  const cleanTag = (row.batch_id || '').trim();
+  const agg = aggregateTable1(scannedRows.filter((r) => (r.batch_id || '').trim() === cleanTag));
+  const sys = systemByBatch.get(cleanTag);
+  const warnings = inventoryWarnings(row, agg, sys);
 
   return {
-    table1Qty,
-    table1Bins,
-    table2Qty,
-    table2Bin,
+    table1Qty: agg.qty,
+    table1Bins: agg.bins,
+    table2Qty: sys ? Number(sys.qty) : null,
+    table2Bin: sys ? (sys.bin || '').trim() || null : null,
     systemStockCode: sys?.stock_code ?? null,
     allMatch: warnings.length === 0,
     warnings,
   };
+}
+
+/**
+ * Map Tag → đã kiểm kê khớp hay chưa, để Bảng 1 highlight + loại trừ dần.
+ * Tag được tính là khớp khi có ≥1 dòng kiểm kê và MỌI dòng kiểm kê của Tag
+ * đều khớp cả Bảng 1 lẫn Bảng 2 (cùng logic inventoryWarnings, tổng hợp 1 pass).
+ */
+export function buildCheckedTagMap(
+  inventoryRows: InventoryRow[],
+  scannedRows: ScanRow[],
+  systemByBatch: Map<string, SystemNumbers>,
+): Map<string, boolean> {
+  const scannedByTag = new Map<string, ScanRow[]>();
+  for (const s of scannedRows) {
+    const k = (s.batch_id || '').trim();
+    if (!k) continue;
+    const list = scannedByTag.get(k);
+    if (list) list.push(s);
+    else scannedByTag.set(k, [s]);
+  }
+  const invByTag = new Map<string, InventoryRow[]>();
+  for (const r of inventoryRows) {
+    const k = (r.batch_id || '').trim();
+    if (!k) continue;
+    const list = invByTag.get(k);
+    if (list) list.push(r);
+    else invByTag.set(k, [r]);
+  }
+
+  const out = new Map<string, boolean>();
+  for (const [tag, invs] of invByTag) {
+    const agg = aggregateTable1(scannedByTag.get(tag) ?? []);
+    const sys = systemByBatch.get(tag);
+    out.set(tag, invs.every((inv) => inventoryWarnings(inv, agg, sys).length === 0));
+  }
+  return out;
 }
 
 /** Mốc nguồn đã chốt cho 1 Tag tại thời điểm mở modal (để phát hiện nguồn vừa đổi). */

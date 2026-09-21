@@ -201,6 +201,7 @@ export default function App() {
         <ReconciliationTable
           rows={rows}
           systemByBatch={byBatch}
+          inventoryRows={inventoryRows}
           presence={presence}
           actorName={identity?.name ?? null}
           onRowDeleted={() => void refetch()}

@@ -6,10 +6,11 @@ import type { SystemNumbers } from '../hooks/useReferenceMap';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table1RowKey } from '../hooks/presenceHelpers';
 import { copyText } from '../lib/copyText';
+import { buildCheckedTagMap } from '../lib/inventoryCompare';
 import { smoothScrollToElementById } from '../lib/smoothScroll';
 import type { ScanStatus } from '../lib/scanApi';
 import { supabase } from '../lib/supabase';
-import type { ScanRow } from '../lib/types';
+import type { InventoryRow, ScanRow } from '../lib/types';
 
 const STATUS_LABEL: Record<ScanStatus, string> = {
   pending: 'Chờ',
@@ -38,9 +39,11 @@ interface ReconciliationTableProps {
   presence?: UsePresenceApi | null;
   /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
   actorName?: string | null;
+  /** Dòng kiểm kê (Bảng 3) để highlight Tag đã kiểm kê khớp + loại trừ dần. */
+  inventoryRows?: InventoryRow[];
 }
 
-export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, presence, actorName }: ReconciliationTableProps) {
+export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, presence, actorName, inventoryRows = [] }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -229,6 +232,26 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     return counts;
   }, [rows]);
 
+  // Tag đã kiểm kê khớp (Bảng 3 báo khớp cả B1 lẫn B2) → highlight để loại trừ dần.
+  // Dòng trùng quét không tính (phải xử lý trùng trước), kể cả khi tổng SL vô tình khớp.
+  const checkedMap = React.useMemo(
+    () => buildCheckedTagMap(inventoryRows, rows, systemByBatch),
+    [inventoryRows, rows, systemByBatch],
+  );
+  const [hideChecked, setHideChecked] = useState(false);
+  const checkedCount = React.useMemo(() => {
+    const seen = new Set<string>();
+    let n = 0;
+    for (const r of rows) {
+      if (!r?.id || seen.has(r.id)) continue;
+      seen.add(r.id);
+      const b = (r.batch_id || '').trim();
+      const dup = (batchCounts.get(b) ?? 0) > 1 || r.status === 'duplicate';
+      if (!dup && checkedMap.get(b) === true) n++;
+    }
+    return n;
+  }, [rows, batchCounts, checkedMap]);
+
   // Lọc theo trạng thái và từ khóa tìm kiếm (kèm chống duplicate key),
   // sau đó xếp hiển thị A–Z theo Bin quét — áp dụng chung cho mọi Trạng thái,
   // các cột khác giữ nguyên thứ tự quét ban đầu (sort ổn định, không tiêu chí phụ).
@@ -241,6 +264,9 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
       }
       const b = r.batch_id?.trim() ?? '';
       const isDuplicate = (batchCounts.get(b) ?? 0) > 1 || r.status === 'duplicate';
+
+      // Loại trừ dần: ẩn dòng đã kiểm kê khớp (trừ dòng trùng — giữ lại để xử lý).
+      if (hideChecked && !isDuplicate && checkedMap.get(b) === true) return false;
 
       if (statusFilter === 'duplicate') {
         if (!isDuplicate) return false;
@@ -266,7 +292,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
       (a.bin || '').trim().localeCompare((b.bin || '').trim(), 'vi', { numeric: true }),
     );
     return list;
-  }, [rows, statusFilter, searchTerm, systemByBatch, batchCounts]);
+  }, [rows, statusFilter, searchTerm, systemByBatch, batchCounts, hideChecked, checkedMap]);
 
   if (rows.length === 0) {
     return (
@@ -331,13 +357,35 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
             className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-1.5 font-mono text-xs text-cyan-300 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
           />
         </div>
+
+        {/* Loại trừ dần: ẩn dòng Tag đã kiểm kê khớp ở Bảng 3 */}
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              setHideChecked((prev) => !prev);
+              setVisibleCount(100);
+            }}
+            aria-pressed={hideChecked}
+            aria-label="Ẩn dòng đã kiểm kê khớp"
+            title="Ẩn các dòng Tag đã kiểm kê khớp ở Bảng 3 để loại trừ dần (dòng trùng quét vẫn giữ lại)"
+            className={`flex items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 font-mono text-xs font-bold transition active:scale-95 ${
+              hideChecked
+                ? 'border-teal-500 bg-teal-500/25 text-teal-300 shadow-md shadow-teal-500/20'
+                : 'border-white/10 bg-black/50 text-slate-400 hover:border-teal-500/40 hover:text-teal-300'
+            }`}
+          >
+            <span>{hideChecked ? '✓' : '📦'}</span>
+            <span>Ẩn đã KK khớp ({checkedCount})</span>
+          </button>
+        </div>
       </div>
 
       <div
         onScroll={handleScroll}
         className="max-h-[500px] overflow-y-auto overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/80 shadow-inner custom-scrollbar"
       >
-        <table className="w-full min-w-[760px] text-left font-mono text-xs">
+        <table className="w-full min-w-[860px] text-left font-mono text-xs">
           <thead className="sticky top-0 z-10 border-b border-white/10 bg-slate-950 text-slate-400 shadow">
             <tr>
               <th className="px-3 py-3">STOCK CODE</th>
@@ -347,6 +395,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               <th className="px-3 py-3 text-right">BIN QUÉT</th>
               <th className="px-3 py-3 text-right">BIN HỆ THỐNG</th>
               <th className="px-3 py-3 text-center">TRẠNG THÁI</th>
+              <th className="px-3 py-3 text-center">KIỂM KÊ</th>
               <th className="px-3 py-3 text-left">GHI CHÚ / CẢNH BÁO</th>
               <th className="px-3 py-3 text-center">THAO TÁC</th>
             </tr>
@@ -360,6 +409,8 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               const stockCode = r.stock_code ?? sys?.stock_code ?? '—';
               const scanCount = batchCounts.get(r.batch_id?.trim() ?? '') ?? 1;
               const isDuplicate = scanCount > 1 || r.status === 'duplicate';
+              // Highlight kiểm kê khớp (Bảng 3) — trừ dòng trùng để xử lý trùng trước.
+              const showChecked = !isDuplicate && checkedMap.get(cleanBatch) === true;
               // Khóa mềm realtime: dòng đang bị người khác sửa/xóa thì disable.
               const lockHolder = presence?.getLock('table1', table1RowKey(r.id)) ?? null;
 
@@ -384,7 +435,11 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                   key={r.id}
                   data-testid={`recon-row-${r.id}`}
                   className={`hover:bg-white/5 transition-colors ${
-                    isDuplicate ? 'duplicate-alert bg-purple-950/20' : ''
+                    isDuplicate
+                      ? 'duplicate-alert bg-purple-950/20'
+                      : showChecked
+                        ? 'bg-teal-950/30 border-l-4 border-l-teal-400'
+                        : ''
                   }`}
                 >
                   {/* Stock Code */}
@@ -528,6 +583,21 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                       {isDuplicate ? STATUS_LABEL.duplicate : STATUS_LABEL[r.status]}
                       {r.resolution ? ` · ${r.resolution === 'appended' ? 'ghi thêm' : 'đổi vị trí'}` : ''}
                     </span>
+                  </td>
+
+                  {/* Kiểm kê (Bảng 3): Tag đã kiểm kê khớp thì đánh dấu để loại trừ dần */}
+                  <td className="px-3 py-2.5 text-center">
+                    {showChecked ? (
+                      <span
+                        data-testid={`recon-checked-${r.id}`}
+                        title="Tag này đã kiểm kê khớp cả Bảng 1 & Bảng 2 ở Bảng 3 — có thể loại trừ"
+                        className="inline-flex items-center gap-1 rounded-full border border-teal-500/50 bg-teal-500/20 px-2 py-0.5 text-[10px] font-extrabold text-teal-300 shadow-sm"
+                      >
+                        📦 Đã KK
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">—</span>
+                    )}
                   </td>
 
                   {/* Ghi chú cảnh báo (màu đỏ nếu chênh lệch hoặc trùng quét) */}

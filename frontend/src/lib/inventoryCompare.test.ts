@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareInventoryRow, detectSourceChange } from './inventoryCompare';
+import { buildCheckedTagMap, compareInventoryRow, detectSourceChange } from './inventoryCompare';
 import type { InventoryRow, ScanRow } from './types';
 
 function invRow(over: Partial<InventoryRow> = {}): InventoryRow {
@@ -88,5 +88,60 @@ describe('compareInventoryRow', () => {
     const cmp = compareInventoryRow(invRow(), scanned, sysNew);
     expect(cmp.allMatch).toBe(false);
     expect(cmp.warnings.join(' ')).toContain('Lệch SL vs hệ thống');
+  });
+});
+
+describe('buildCheckedTagMap', () => {
+  const scanned: ScanRow[] = [
+    {
+      id: 's1',
+      batch_id: 'OK_TAG',
+      qty: 10,
+      bin: 'BIN_A',
+      stock_code: 'ST',
+      status: 'ok',
+      resolution: null,
+      is_manual: false,
+      scanned_at: '2026-09-21T00:00:00Z',
+    },
+    {
+      id: 's2',
+      batch_id: 'BAD_TAG',
+      qty: 5,
+      bin: 'BIN_A',
+      stock_code: 'ST',
+      status: 'qty_mismatch',
+      resolution: null,
+      is_manual: false,
+      scanned_at: '2026-09-21T00:00:00Z',
+    },
+  ];
+  const sys = new Map([
+    ['OK_TAG', { stock_code: 'ST', qty: 10, bin: 'BIN_A' }],
+    ['BAD_TAG', { stock_code: 'ST', qty: 8, bin: 'BIN_A' }],
+  ]);
+
+  function inv(tag: string, qty: number): InventoryRow {
+    return {
+      id: `inv-${tag}`,
+      batch_id: tag,
+      stock_code: 'ST',
+      qty,
+      bin: 'BIN_A',
+      is_manual: false,
+      scanned_at: '2026-09-21T00:00:00Z',
+    };
+  }
+
+  it('Tag kiểm kê khớp cả 2 bảng → true; lệch → false; chưa kiểm kê → vắng mặt', () => {
+    const m = buildCheckedTagMap([inv('OK_TAG', 10), inv('BAD_TAG', 5)], scanned, sys);
+    expect(m.get('OK_TAG')).toBe(true);
+    expect(m.get('BAD_TAG')).toBe(false);
+    expect(m.has('NOPE_TAG')).toBe(false);
+  });
+
+  it('một dòng KK lệch trong nhiều dòng cùng Tag → cả Tag false', () => {
+    const m = buildCheckedTagMap([inv('OK_TAG', 10), { ...inv('OK_TAG', 3), id: 'inv-x' }], scanned, sys);
+    expect(m.get('OK_TAG')).toBe(false);
   });
 });
