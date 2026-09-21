@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import ConnectionBadge from './components/ConnectionBadge';
 import ExportButton from './components/ExportButton';
 import InventoryScanModal from './components/InventoryScanModal';
+import InventoryTable from './components/InventoryTable';
 import NameGateModal from './components/NameGateModal';
 import OnlineUsersModal from './components/OnlineUsersModal';
 import OnlineUsersStrip from './components/OnlineUsersStrip';
@@ -185,15 +186,7 @@ export default function App() {
               <PresenceAvatars users={presence.viewersOfTable('table1')} tableLabel="Bảng 1" />
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsInventoryOpen(true)}
-              title="Mở modal quét kiểm kê (Bảng 3 đối chiếu với Bảng 1 & Bảng 2)"
-              className="rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 py-3 px-4 text-sm font-bold text-white shadow-lg shadow-amber-900/30 transition hover:opacity-95 active:scale-95"
-            >
-              📦 QUÉT KIỂM KÊ ({inventoryRows.length})
-            </button>
+          <div className="flex items-center gap-2">
             <ExportButton rows={rows} systemByBatch={byBatch} />
           </div>
         </div>
@@ -242,6 +235,30 @@ export default function App() {
           onReferenceImported={() => void refetchReference()}
         />
       </div>
+
+      {/* Bảng 3: Kiểm kê & Đối chiếu chéo (theo dõi trực tiếp + export) */}
+      <section
+        id="bang-3"
+        aria-label="Kiểm kê"
+        className="flex scroll-mt-4 flex-col gap-3 rounded-3xl border border-amber-500/20 bg-slate-900/60 p-4 sm:p-5 shadow-xl"
+      >
+        <div>
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-200 flex items-center gap-2">
+            <span>📦</span> Bảng 3 — Kiểm Kê &amp; Đối Chiếu ({inventoryRows.length})
+          </h2>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Đối chiếu trực tiếp số lượng kiểm kê với Bảng 1 (đã quét) và Bảng 2 (hệ thống).
+          </p>
+        </div>
+
+        <InventoryTable
+          inventoryRows={inventoryRows}
+          scannedRows={rows}
+          systemByBatch={byBatch}
+          onOpenScan={() => setIsInventoryOpen(true)}
+          onChanged={() => void refetchInventory()}
+        />
+      </section>
 
       {/* Giao diện nổi Quét Tag (Modal) */}
       <PdaScanModal
