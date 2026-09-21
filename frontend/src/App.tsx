@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import ConnectionBadge from './components/ConnectionBadge';
 import ExportButton from './components/ExportButton';
+import InventoryScanModal from './components/InventoryScanModal';
 import NameGateModal from './components/NameGateModal';
 import OnlineUsersModal from './components/OnlineUsersModal';
 import OnlineUsersStrip from './components/OnlineUsersStrip';
@@ -14,6 +15,7 @@ import PresenceAvatars from './components/PresenceAvatars';
 import ReconciliationTable from './components/ReconciliationTable';
 import ReferenceDataTable from './components/ReferenceDataTable';
 import { useIdentity } from './hooks/useIdentity';
+import { useInventoryCounts } from './hooks/useInventoryCounts';
 import { usePresence } from './hooks/usePresence';
 import { initialForName } from './hooks/presenceHelpers';
 import { useReferenceMap } from './hooks/useReferenceMap';
@@ -25,7 +27,9 @@ export default function App() {
   // refetchReference BẮT BUỘC sau import nguồn: import xóa-nạp lại toàn bảng nên
   // map tra cứu không thể chỉ trông chờ realtime từng dòng (Bảng 1/Bảng 3 lệch im tới khi F5).
   const { byBatch, refetch: refetchReference, updateBatchQty, updateBatchBin, addBatch, removeBatch } = useReferenceMap();
+  const { rows: inventoryRows, refetch: refetchInventory } = useInventoryCounts();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   // Hiện diện realtime: bắt buộc đặt tên → avatar streaming + khóa mềm theo dòng.
   const { identity, saveName, rename } = useIdentity();
   const presence = usePresence(identity);
@@ -181,7 +185,15 @@ export default function App() {
               <PresenceAvatars users={presence.viewersOfTable('table1')} tableLabel="Bảng 1" />
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsInventoryOpen(true)}
+              title="Mở modal quét kiểm kê (Bảng 3 đối chiếu với Bảng 1 & Bảng 2)"
+              className="rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 py-3 px-4 text-sm font-bold text-white shadow-lg shadow-amber-900/30 transition hover:opacity-95 active:scale-95"
+            >
+              📦 QUÉT KIỂM KÊ ({inventoryRows.length})
+            </button>
             <ExportButton rows={rows} systemByBatch={byBatch} />
           </div>
         </div>
@@ -238,6 +250,16 @@ export default function App() {
         systemByBatch={byBatch}
         actorName={identity?.name ?? null}
         onScanned={() => void refetch()}
+      />
+
+      {/* Giao diện nổi Quét Kiểm Kê (Bảng 3 — chỉ nằm trong modal) */}
+      <InventoryScanModal
+        isOpen={isInventoryOpen}
+        onClose={() => setIsInventoryOpen(false)}
+        inventoryRows={inventoryRows}
+        scannedRows={rows}
+        systemByBatch={byBatch}
+        onChanged={() => void refetchInventory()}
       />
 
       <OnlineUsersModal

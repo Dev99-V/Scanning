@@ -102,6 +102,19 @@ describe('App layout and modal workflow', () => {
     expect(screen.getByText('PDA SCAN MATRIX')).toBeInTheDocument();
   });
 
+  it('nút Quét Kiểm Kê cạnh Export Bảng 1 mở modal Bảng 3', async () => {
+    render(<App />);
+
+    const invBtn = screen.getByRole('button', { name: /QUÉT KIỂM KÊ/i });
+    expect(invBtn).toBeInTheDocument();
+    fireEvent.click(invBtn);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByText('📦 QUÉT KIỂM KÊ')).toBeInTheDocument();
+    expect(screen.getByText(/Bảng 3 — Đối chiếu kiểm kê/)).toBeInTheDocument();
+  });
+
   it('mở danh sách người online từ số đếm trên header', async () => {
     render(<App />);
 
