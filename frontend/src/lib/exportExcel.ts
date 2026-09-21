@@ -6,7 +6,8 @@
 import * as XLSX from 'xlsx';
 import { actorDisplayName, describeAuditEntry, type AuditEntry } from './auditLog';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
-import type { ScanRow } from '../lib/types';
+import type { InventoryRow, ScanRow } from '../lib/types';
+import { compareInventoryRow } from './inventoryCompare';
 
 export const EXPORT_HEADER = [
   'Stock Code',
@@ -79,6 +80,65 @@ export function buildReconWorkbook(rows: ScanRow[], systemByBatch: Map<string, S
 export function downloadReconExcel(rows: ScanRow[], systemByBatch: Map<string, SystemNumbers>): void {
   const wb = buildReconWorkbook(rows, systemByBatch);
   XLSX.writeFile(wb, `DoiChieu_${Date.now()}.xlsx`);
+}
+
+export const INVENTORY_EXPORT_HEADER = [
+  'Stock Code',
+  'Tag ID',
+  'Bin kiểm kê',
+  'SL kiểm kê',
+  'Bin Bảng 1',
+  'SL Bảng 1',
+  'Bin hệ thống (B2)',
+  'SL hệ thống (B2)',
+  'Trạng thái',
+  'Cảnh báo',
+];
+
+export function buildInventoryWorkbook(
+  rows: InventoryRow[],
+  scannedRows: ScanRow[],
+  systemByBatch: Map<string, SystemNumbers>,
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  const data: unknown[][] = [INVENTORY_EXPORT_HEADER];
+  for (const r of rows) {
+    const cmp = compareInventoryRow(r, scannedRows, systemByBatch);
+    const stockCode = r.stock_code ?? cmp.systemStockCode ?? '';
+    data.push([
+      textCell(stockCode),
+      textCell(r.batch_id),
+      textCell(r.bin),
+      textCell(r.qty),
+      textCell(cmp.table1Bins.join(', ') || ''),
+      cmp.table1Qty === null ? '' : textCell(cmp.table1Qty),
+      textCell(cmp.table2Bin ?? ''),
+      cmp.table2Qty === null ? '' : textCell(cmp.table2Qty),
+      cmp.allMatch ? 'Khớp cả 2 bảng' : 'Lệch',
+      cmp.warnings.join(' | '),
+    ]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    for (let R = range.s.r + 1; R <= range.e.r; R++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c });
+      const cell = ws[addr] as { z?: string } | undefined;
+      if (cell && typeof cell === 'object') cell.z = '@';
+      else ws[addr] = { v: '', t: 's', z: '@' };
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, ws, 'KiemKe');
+  return wb;
+}
+
+export function downloadInventoryExcel(
+  rows: InventoryRow[],
+  scannedRows: ScanRow[],
+  systemByBatch: Map<string, SystemNumbers>,
+): void {
+  const wb = buildInventoryWorkbook(rows, scannedRows, systemByBatch);
+  XLSX.writeFile(wb, `KiemKe_${Date.now()}.xlsx`);
 }
 
 export function downloadStreamingExcel(rows: ScanRow[]): void {

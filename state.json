@@ -108,6 +108,18 @@
       "detail": "Fix mất online sau 1 thời gian (2026-09-17): mới frontend/src/lib/realtime.ts (resilientSubscribe: tự nối lại backoff 1s-15s, refetch bù khi SUBSCRIBED trở lại, health gom toàn app, bắt visibilitychange/online/offline) + tích hợp vào 5 kênh (presence, scanned_data, refmap, reftable Bảng 2, audit) + badge ConnectionBadge thật trên header thay chữ cứng. Chỉ frontend, không đổi contract backend. Verify: tsc PASS, lint PASS, vitest 35 files/156 tests PASS, QC_PHASE4/5/6 PASS.",
       "status": "implemented_2026_09_17",
       "date": "2026-09-17"
+    },
+    {
+      "type": "inventory_counts_table",
+      "detail": "User yêu cầu modal Quét Kiểm Kê cạnh EXPORT XLSX Bảng 1: migration 20260921090000_create_inventory_counts.sql (bảng inventory_counts riêng: id/batch_id/stock_code/qty/bin/scanned_by/scanned_at/is_manual + 2 index + RLS 4 policies authenticated + realtime publication). Frontend: InventoryRow types, useInventoryCounts (realtime), inventoryCompare.compareInventoryRow (KK vs tổng SL B1 + SL/Bin B2), export KiemKe XLSX text-format, InventoryScanModal (luồng Bin→Tag→SL tay giống PDA, Bảng 3 trong modal: STOCK CODE/TAG ID/BIN KK/SL KK/BIN B1/SL B1/BIN HT/SL HT/Cảnh báo). User đã nạp SQL bằng tay lên cloud 2026-09-21. CÒN THIẾU: dòng history schema_migrations (chưa ghi thì db push sau này apply lại → lỗi already exists) + cân nhắc policy anon SELECT (migration mới chỉ cấp authenticated; anon hiện đọc được 3 bảng cũ).",
+      "status": "applied_cloud_manual_history_pending",
+      "date": "2026-09-21"
+    },
+    {
+      "type": "frontend_only_import_resync_plus_source_change",
+      "detail": "User check logic nạp nguồn vs Bảng 3 (2026-09-21): (1) import xóa-nạp lại toàn bảng nên byBatch (Bảng 1/Bảng 3) không thể chỉ trông chờ realtime từng dòng → ReferenceDataTable thêm prop onReferenceImported, App refetch useReferenceMap sau import thành công; (2) Bảng 3 chốt mốc nguồn lúc mở modal (lib detectSourceChange pure + baseline first-seen, chỉ bổ sung key mới khi đang mở) → dòng bị nguồn đổi sau mốc được viền vàng + badge 🔄 Nguồn vừa đổi + chi tiết cũ→mới + banner đếm Tag + nút chốt lại mốc. Chỉ frontend (prop optional, tương thích ngược). Verify: tsc PASS, lint PASS (sạch warning), vitest 37 files/168 tests PASS (mới 2 files/12 tests), vite build OK.",
+      "status": "implemented_2026_09_21",
+      "date": "2026-09-21"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {

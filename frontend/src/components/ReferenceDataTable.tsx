@@ -36,6 +36,13 @@ interface ReferenceDataTableProps {
   onReferenceDeleted?: (batchId: string) => void;
   /** Gọi sau khi nhập kho nhanh thành công để Bảng 1 refetch tức thì (realtime vẫn tự cập nhật). */
   onQuickImported?: () => void;
+  /**
+   * Gọi sau khi import file nguồn thành công. BẮT BUỘC cho App refetch useReferenceMap:
+   * import xóa-nạp lại toàn bảng (DELETE mass + upsert ~nghìn dòng) nên map tra cứu
+   * Bảng 1/Bảng 3 KHÔNG thể chỉ trông chờ realtime từng dòng (dễ miss/throttle) —
+   * không refetch là đối chiếu sau import lệch im tới khi F5.
+   */
+  onReferenceImported?: () => void;
   /** Presence realtime (khóa mềm theo dòng). Không bắt buộc để test cũ vẫn chạy. */
   presence?: UsePresenceApi | null;
   /** Dải avatar streaming do App truyền xuống (đã lọc theo Bảng 2). */
@@ -51,6 +58,7 @@ export default function ReferenceDataTable({
   onReferenceAdded,
   onReferenceDeleted,
   onQuickImported,
+  onReferenceImported,
   presence,
   presenceHeader,
   actorName,
@@ -748,7 +756,10 @@ export default function ReferenceDataTable({
         {/* Thẻ Import: giữ nguyên phần import, khối Tag 7055 nằm chung bên dưới vạch ngăn */}
         <ReferenceImportCard
           actorName={actorName}
-          onImportSuccess={() => setRefreshTrigger((prev) => prev + 1)}
+          onImportSuccess={() => {
+            setRefreshTrigger((prev) => prev + 1);
+            onReferenceImported?.();
+          }}
           bottomContent={<Reference7055Card bare rows7055={rows7055} />}
         />
         {/* Thẻ Thêm nguồn kéo dài nửa phải, thẳng hàng với bảng trên/dưới */}

@@ -22,7 +22,9 @@ import { useTableJumpKeys } from './hooks/useTableJumpKeys';
 
 export default function App() {
   const { rows, refetch } = useScannedData();
-  const { byBatch, updateBatchQty, updateBatchBin, addBatch, removeBatch } = useReferenceMap();
+  // refetchReference BẮT BUỘC sau import nguồn: import xóa-nạp lại toàn bảng nên
+  // map tra cứu không thể chỉ trông chờ realtime từng dòng (Bảng 1/Bảng 3 lệch im tới khi F5).
+  const { byBatch, refetch: refetchReference, updateBatchQty, updateBatchBin, addBatch, removeBatch } = useReferenceMap();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   // Hiện diện realtime: bắt buộc đặt tên → avatar streaming + khóa mềm theo dòng.
   const { identity, saveName, rename } = useIdentity();
@@ -224,6 +226,7 @@ export default function App() {
             void refetch();
           }}
           onQuickImported={() => void refetch()}
+          onReferenceImported={() => void refetchReference()}
         />
       </div>
 
