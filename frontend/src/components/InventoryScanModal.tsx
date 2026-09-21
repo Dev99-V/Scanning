@@ -180,15 +180,17 @@ export default function InventoryScanModal({
     setBusy(true);
     setNotice(null);
     try {
-      const { error } = await supabase.from('inventory_counts').insert({
-        batch_id: tag,
-        stock_code: finalStockCode,
-        qty: qVal,
-        bin: activeBin,
-        is_manual: false,
+      // Ghi qua RPC SECURITY DEFINER: app chạy phiên anon nên insert thẳng bị
+      // RLS chặn (đúng chuẩn repo: mọi ghi đi qua RPC, như delete_scanned_row).
+      const { data, error } = await supabase.rpc('submit_inventory_count', {
+        p_batch_id: tag,
+        p_stock_code: finalStockCode,
+        p_qty: qVal,
+        p_bin: activeBin,
+        p_is_manual: false,
       });
-      if (error) {
-        setNotice(`❌ Lỗi lưu kiểm kê: ${error.message}`);
+      if (error || (data as { ok?: unknown } | null)?.ok !== true) {
+        setNotice(`❌ Lỗi lưu kiểm kê: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
       } else {
         setSuccessNotice(`✅ Đã lưu kiểm kê: ${tag} (SL: ${qVal}, Bin: ${activeBin})`);
         resetTagForm();
@@ -205,12 +207,15 @@ export default function InventoryScanModal({
     if (!window.confirm('Xóa dòng kiểm kê này?')) return;
     setDeletingId(id);
     try {
-      const { error } = await supabase.from('inventory_counts').delete().eq('id', id);
-      if (error) {
-        setNotice(`❌ Lỗi xóa: ${error.message}`);
+      // Xóa qua RPC SECURITY DEFINER (phiên anon không được delete thẳng).
+      const { data, error } = await supabase.rpc('delete_inventory_row', { p_id: id });
+      if (error || (data as { ok?: unknown } | null)?.ok !== true) {
+        setNotice(`❌ Lỗi xóa: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
       } else {
         onChanged?.();
       }
+    } catch (err) {
+      setNotice(`❌ Lỗi kết nối: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setDeletingId(null);
     }

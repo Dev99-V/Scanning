@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import InventoryScanModal from '../InventoryScanModal';
 import type { InventoryRow, ScanRow } from '../../lib/types';
 
+const { mockRpc } = vi.hoisted(() => ({ mockRpc: vi.fn() }));
+
 vi.mock('../../lib/supabase', () => ({
-  supabase: { from: vi.fn() },
+  supabase: { from: vi.fn(), rpc: mockRpc },
 }));
 
 vi.mock('../../lib/exportExcel', async () => {
@@ -43,6 +45,7 @@ const sys12 = new Map([['TAG1', { stock_code: 'ST_A', qty: 12, bin: 'BIN_A' }]])
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockRpc.mockResolvedValue({ data: { ok: true, id: 'new1', batch_id: 'TAG1' }, error: null });
 });
 
 describe('InventoryScanModal', () => {
@@ -108,5 +111,42 @@ describe('InventoryScanModal', () => {
     // Bấm chốt lại mốc → highlight tắt.
     fireEvent.click(screen.getByRole('button', { name: /chốt lại mốc/i }));
     expect(screen.queryByTestId('inventory-source-changed-badge')).not.toBeInTheDocument();
+  });
+
+  it('lưu qua RPC submit_inventory_count (phiên anon không insert thẳng)', async () => {
+    const onChanged = vi.fn();
+    render(
+      <InventoryScanModal
+        isOpen={true}
+        onClose={() => {}}
+        inventoryRows={[]}
+        scannedRows={scannedRows}
+        systemByBatch={sys10}
+        onChanged={onChanged}
+      />,
+    );
+
+    // 1. Quét Bin
+    const binInput = screen.getByPlaceholderText('READY TO SCAN BIN...');
+    fireEvent.change(binInput, { target: { value: 'BIN_A' } });
+    fireEvent.submit(binInput.closest('form')!);
+
+    // 2. Quét Tag có trong nguồn + nhập SL tay + lưu
+    const tagInput = await screen.findByPlaceholderText('SCAN TAG ID (ENTER)...');
+    fireEvent.change(tagInput, { target: { value: 'TAG1' } });
+    fireEvent.keyDown(tagInput, { key: 'Enter', code: 'Enter' });
+    const qtyInput = await screen.findByPlaceholderText('NHẬP SỐ LƯỢNG...');
+    fireEvent.change(qtyInput, { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /LƯU LƯỢT KIỂM KÊ/i }));
+
+    await screen.findByText(/Đã lưu kiểm kê: TAG1/);
+    expect(mockRpc).toHaveBeenCalledWith('submit_inventory_count', {
+      p_batch_id: 'TAG1',
+      p_stock_code: 'ST_A',
+      p_qty: 10,
+      p_bin: 'BIN_A',
+      p_is_manual: false,
+    });
+    expect(onChanged).toHaveBeenCalled();
   });
 });
