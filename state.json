@@ -132,6 +132,12 @@
       "detail": "Cùng đợt 2026-09-22: (1) ReconciliationTable live-compare trim BIN 2 đầu, note không bao giờ 'Khớp hoàn toàn' khi đang lệch/mất nguồn (kể cả status stale), sys-null → cảnh báo đỏ; badge/KPI vẫn theo status (sẽ đúng sau RPC recompute); (2) useReferenceMap trim bin khi nạp/realtime/updateBatchBin; (3) lag nhẹ: bỏ alert-flash infinite ở .duplicate-alert (giữ màu/viền), header bỏ animate-ping, thêm prefers-reduced-motion. Chỉ frontend, không đổi contract. Verify: tsc PASS, lint PASS, vitest 39 files/183 tests PASS (3 tests hồi quy mới), vite build OK, QC_PHASE4/5/6 PASS.",
       "status": "implemented_2026_09_22",
       "date": "2026-09-22"
+    },
+    {
+      "type": "rpc_restore_tag_7055_plus_import_preserve",
+      "detail": "Fix mất nhãn 7055 sau nạp nguồn (2026-09-23, Learning.md cùng ngày): migration 20260923090000_restore_tag_7055.sql (RPC restore_tag_7055 hàng loạt + audit, grant anon/authenticated/service_role) + Edge import-reference snapshot flag trước delete và gắn lại sau upsert (tag biến mất khỏi file mới chỉ báo vanished, không dựng lại). Không đổi contract cũ (chỉ thêm field data). Cần db push + functions deploy import-reference. Chữa dữ liệu đã mất: chạy tay restore_tag_7055 với danh sách từ file Excel 7055 đã xuất (SQL mẫu trong notes_for_next_session).",
+      "status": "pending_cloud_apply",
+      "date": "2026-09-23"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {
@@ -207,5 +213,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-22 (bug Bảng 1 lệch BIN vẫn báo Khớp + pipeline.md + giảm lag nhẹ): pipeline.md MỚI (kiến trúc + 2 nguồn sự thật badge/note + điểm sửa P0/P1/P2); migration 20260922090000_recompute_scanned_statuses.sql + Edge import-reference gọi recompute + frontend note/trim/perf đã xong local (tsc/lint/vitest 39 files/183 tests/build + QC_PHASE4/5/6 PASS, Learning.md đã ghi). CHƯA LÊN CLOUD: merge main để backend-deploy chạy db push + functions deploy (vẫn kẹt SUPABASE_DB_PASSWORD từ 2026-09-16 — user tự thêm secret, không gửi pass qua chat) + history 20260921090000 tay (việc cũ). Token sbp_ cũ vẫn cần rotate. Frontend deploy Pages xong là hết chữ đỏ 'Khớp hoàn toàn'; badge 'Khớp' stale tự đúng sau backend-deploy."
+  "notes_for_next_session": "2026-09-23 (KHẨN mất nhãn 7055): root cause = import-reference delete-nạp lại mà file Excel không có cột 7055 → reset hết flag gắn tay. Đã code xong: Edge snapshot+gắn lại sau upsert + RPC restore_tag_7055 (migration 20260923090000), Learning/pipeline/state đã ghi, vitest 183/183 + lint sạch. THỨ TỰ: (1) merge main cho backend-deploy chạy db push (2 migration mới) + functions deploy import-reference; (2) RỒI mới khôi phục nhãn đã mất: SQL Editor chạy select public.restore_tag_7055(array['TAG_ID_1','TAG_ID_2',...]) với danh sách lấy từ file 'Tag in thêm 7055 [ngày].xlsx' đã xuất trước đó; (3) verify badge 7055 + nạp thử file nguồn, nhãn phải còn. Nếu không còn file Excel cũ: Free không có auto-backup (chỉ Pro có daily backup 7 ngày) → gắn lại tay từng Tag qua thẻ Thêm Nguồn (tích 7055 + ghi đè). Nợ cũ: history tay 20260921090000 + kiểm tra 20260921100000 trên cloud."
 }

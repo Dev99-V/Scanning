@@ -58,11 +58,13 @@ Bảng 1 đối chiếu: cột SL/BIN quét vs SL/BIN hệ thống + badge TRẠ
 ```
 1. ReferenceImportCard upload .xlsx → Edge import-reference
 2. Edge: dò header động (15 dòng đầu) → TRIM text (giữ *_raw audit) → Map khử trùng batch
+2b. ✅ FIX 2026-09-23 (bug mất nhãn 7055): snapshot `batch_id WHERE tag_7055=true`
+    TRƯỚC delete — file Excel không có cột 7055 nên delete-nạp lại từng reset hết
+    nhãn gắn tay. Sau upsert gắn lại flag cho tag còn trong nguồn mới; tag không
+    còn → báo `tag_7055_vanished[]` trong response + audit (KHÔNG dựng lại).
 3. Edge: DELETE toàn bảng (delete().neq(batch_id,"")) → upsert từng chunk 500
-4. ⚠️ KHÔNG có bước nào recompute scanned_data.status sau import
-   → dòng quét cũ giữ status 'ok' dù BIN/QTY nguồn mới đã đổi
-   → Bảng 1: badge xanh "Khớp" (từ status cũ) + ô BIN đỏ (từ live-compare mới)
-   → đúng ảnh user gửi: BIN quét 25 vs BIN HT 01 nhưng TRẠNG THÁI = Khớp
+4. ✅ FIX 2026-09-22 (bug status stale): gọi RPC `recompute_scanned_statuses` sau import
+   (trước đó KHÔNG có bước này → badge xanh "Khớp" từ status cũ + ô BIN đỏ mới)
 5. Realtime bulk DELETE+INSERT hàng nghìn event → máy khác có thể miss event;
    chỉ máy import được refetchReference (fix 2026-09-21), máy còn lại trông chờ realtime
 ```

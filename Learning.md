@@ -28,6 +28,18 @@
 
 ## Nhật ký
 
+### [2026-09-23] Mất toàn bộ nhãn 7055 sau mỗi lần nạp nguồn (import wipe flag)
+
+- **Khu vực**: Edge `import-reference` + cột `reference_stock.tag_7055` + mới RPC `restore_tag_7055`
+- **Triệu chứng**: mọi Tag từng gắn nhãn "7055" mất nhãn sau khi nạp file nguồn mới.
+- **Nguyên nhân gốc** (đối chiếu code): `import-reference` làm `DELETE` toàn bảng rồi `upsert` chunk dựng từ file Excel — mà file Excel KHÔNG có cột 7055, chunk cũng không kèm `tag_7055` → dòng mới insert về `default false`. Mỗi lần nạp là 1 lần reset toàn bộ nhãn gắn tay. Audit `reference_add` không lưu giá trị flag nên không suy ngược được từ log trong DB.
+- **Cách sửa**:
+  1. Edge `import-reference`: snapshot `batch_id WHERE tag_7055=true` TRƯỚC delete; sau upsert `UPDATE tag_7055=true` lại cho tag còn trong nguồn mới (chia slice 500); tag không còn trong file mới KHÔNG dựng lại (giữ trung thực nguồn) mà báo `tag_7055_vanished[]` trong response + audit để đối chiếu tay. Lỗi snapshot/restore chỉ log, không fail import.
+  2. Migration `20260923090000_restore_tag_7055.sql`: RPC `restore_tag_7055(p_batch_ids, p_value, p_actor_name)` — trim/khử trùng đầu vào, update hàng loạt, trả `{applied, missing[]}`, ghi audit `edit/kind=tag_7055_restore`; grant anon+authenticated+service_role như `add_reference_stock` (kiosk anon).
+- **Bằng chứng đã hết lỗi**: `oxlint` sạch; `vitest` 39 files/183 tests PASS (frontend không đổi); SQL rà soát kỹ theo mẫu migration cũ (db push CI sẽ validate + backfill không cần vì RPC chỉ chạy khi gọi). Chữa dữ liệu đã mất phải chạy tay `restore_tag_7055` với danh sách từ file Excel 7055 đã xuất (xem state.json).
+- **Cách phòng tránh lần sau**: mọi cột "nhãn tay" (không có trong file nguồn) phải được snapshot trước bulk delete-nạp lại; bulk import nào cũng phải liệt kê rõ cột nào được giữ/cột nào reset trong response + audit.
+- **Liên quan**: Plan.md §4.1/Phase 2; Skills A/C; `pipeline.md` §3 (đã cập nhật); `state.json:pending_contract_changes` (migration + Edge additive, chờ deploy).
+
 ### [2026-09-22] Bảng 1 lệch BIN nhưng báo Khớp hoàn toàn (chữ đỏ) — status stale sau import nguồn
 
 - **Khu vực**: Edge `import-reference` + RPC `scan_submit`/`update_reference_*` + Frontend Bảng 1 (`ReconciliationTable.tsx`, `useReferenceMap.ts`) + `App.tsx` KPI

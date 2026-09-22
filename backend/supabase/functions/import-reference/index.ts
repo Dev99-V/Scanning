@@ -167,6 +167,29 @@ serve(async (req: Request) => {
   const records = Array.from(recordMap.values());
   const supabase = createClient(supabaseUrl, serviceKey);
 
+  // SNAPSHOT nhãn 7055 TRƯỚC khi xóa (bug 2026-09-23: file Excel không có cột
+  // 7055 nên xóa-nạp lại reset toàn bộ nhãn gắn tay về false). Sau upsert sẽ
+  // gắn lại cho tag còn trong nguồn mới; tag không còn thì báo vanished.
+  let flaggedIds: string[] = [];
+  try {
+    const { data: flagged, error: flagErr } = await supabase
+      .from("reference_stock")
+      .select("batch_id")
+      .eq("tag_7055", true);
+    if (!flagErr && flagged) {
+      const seen = new Set<string>();
+      for (const r of flagged as { batch_id?: unknown }[]) {
+        const id = typeof r?.batch_id === "string" ? r.batch_id.trim() : "";
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          flaggedIds.push(id);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("snapshot tag_7055 failed:", e instanceof Error ? e.message : String(e));
+  }
+
   // Xóa toàn bộ dữ liệu nguồn cũ trước khi nạp dữ liệu mới theo yêu cầu
   const { error: clearErr } = await supabase.from("reference_stock").delete().neq("batch_id", "");
   if (clearErr) {
@@ -181,6 +204,23 @@ serve(async (req: Request) => {
       return json(500, { ok: false, error: { code: "upsert_failed", message: error.message } });
     }
     upserted += chunk.length;
+  }
+
+  // Gắn lại nhãn 7055 cho tag còn trong nguồn mới (chữa bug mất nhãn 2026-09-23).
+  // Tag đã biến mất khỏi file mới KHÔNG dựng lại (giữ trung thực nguồn),
+  // chỉ báo vanished để đối chiếu tay.
+  const newIds = new Set(records.map((r) => r["batch_id"] as string));
+  const keepFlags = flaggedIds.filter((id) => newIds.has(id));
+  const vanishedFlags = flaggedIds.filter((id) => !newIds.has(id));
+  let tag7055Preserved = 0;
+  for (let i = 0; i < keepFlags.length; i += BATCH_SIZE) {
+    const slice = keepFlags.slice(i, i + BATCH_SIZE);
+    const { error } = await supabase.from("reference_stock").update({ tag_7055: true }).in("batch_id", slice);
+    if (error) {
+      console.error("restore tag_7055 slice failed:", error.message);
+    } else {
+      tag7055Preserved += slice.length;
+    }
   }
 
   // Đối chiếu lại toàn bộ scanned_data theo nguồn mới (pipeline.md §3):
@@ -213,6 +253,9 @@ serve(async (req: Request) => {
       upserted,
       skipped: skipped.length,
       recomputed,
+      tag_7055_preserved: tag7055Preserved,
+      tag_7055_vanished: vanishedFlags,
+      tag_7055_vanished_count: vanishedFlags.length,
     },
   });
   if (auditErr) {
@@ -229,6 +272,9 @@ serve(async (req: Request) => {
       skipped: skipped.length,
       skipped_rows: skipped.slice(0, 20),
       recomputed,
+      tag_7055_preserved: tag7055Preserved,
+      tag_7055_vanished: vanishedFlags,
+      tag_7055_vanished_count: vanishedFlags.length,
     },
   });
 });
