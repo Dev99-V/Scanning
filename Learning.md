@@ -654,3 +654,17 @@
 - **Bằng chứng đã hết lỗi**: `tsc -b` exit 0; `oxlint` sạch (fix luôn warning exhaustive-deps bằng `useCallback`); `vitest` 37 files/168 tests PASS (mới `inventoryCompare.test.ts` 9 tests + `InventoryScanModal.test.tsx` 3 tests: render Bảng 3 đủ cột, đổi SL nguồn khi modal mở → badge+banner+cảnh báo tự tra lại, chốt mốc → hết highlight); `vite build` OK.
 - **Cách phòng tránh lần sau**: mọi bulk import (xóa-nạp lại) bắt buộc refetch full map tra cứu sau success, không tin realtime từng dòng; mọi bảng đối chiếu "so với thời điểm trước" phải có baseline snapshot + test đổi-dữ-liệu-giữa-phiên.
 - **Liên quan**: `state.json:pending_contract_changes(inventory_counts_table, frontend_only_import_resync_plus_source_change)`; migration `20260921090000_create_inventory_counts.sql` chờ `db push` cloud.
+
+### [2026-09-22] Trả nợ kỹ thuật đợt 1: audit kiểm kê + gate RPC mới + modal xóa custom + xóa fallback chết
+
+- **Khu vực**: migration `20260925090000_inventory_counts_audit.sql` + `lib/inventoryApi.ts` + `lib/auditLog.ts` + `InventoryTable.tsx` + `InventoryScanModal.tsx` + `ReconciliationTable.tsx` + gate mới `backend/supabase/tests/qc_inventory.sh` (+ wiring CI `backend-deploy.yml`)
+- **Triệu chứng (debt đã báo)**: (1) thao tác Bảng 3 vô hình trong Nhật ký; (2) không gate nào phủ RPC mới (`restore_tag_7055`, `update_inventory_row`, `recompute`); (3) xóa dòng kiểm kê dùng `window.confirm` native; (4) logic xóa kiểm kê trùng ở 2 component; (5) nhánh fallback schema-cache Bảng 1 chết từ 16/9. Giữa chừng user đổi yêu cầu: Bảng 3 cho sửa cả SL KK + Bin KK (vẫn khóa Tag/Mã hàng).
+- **Nguyên nhân gốc**: Bảng 3 sinh sau (21/9) nên RPC viết gọn thiếu audit + actor; gate backend dừng ở phase 3; modal Bảng 3 copy nhanh bằng confirm native.
+- **Cách sửa**:
+  1. Migration mới: 3 RPC kiểm kê ghi `scan_audit_log` (kind `inventory_add`/`inventory_update`/`inventory_delete`, `scanned_id` NULL) + `p_actor_name` OPTIONAL; `update_inventory_row(p_id, p_new_qty DEFAULT NULL, p_new_bin DEFAULT NULL, ...)` — NULL giữ cũ; DROP overload cũ + GRANT lại. Frontend `auditLog.ts` mô tả 3 kind (kind đọc cả `old_value` cho entry delete) + `actorName` đấu từ `App` xuống 2 component Bảng 3.
+  2. Gate `qc_inventory.sh` 7 CHECK (migration idempotent ×2, submit/update/delete + audit + validation, 7055 on/off + missing + audit, recompute stale→đúng + duplicate, cleanup 0 sót) + wiring vào job test CI. Lỗi suýt mắc: `RETURNING *` sau UPDATE trả giá trị mới làm `old_value` sai → đã sửa thành SELECT ... FOR UPDATE trước rồi mới UPDATE.
+  3. Mới `lib/inventoryApi.ts` (`deleteInventoryRow`/`updateInventoryRow` trả `{ok, message}`); 2 component Bảng 3 dùng chung; modal xóa custom (Bảng full: dialog đầy đủ, modal quét: dialog lồng `z-[60]`).
+  4. Xóa nhánh fallback + test cũ, thay bằng test "lỗi gọi đúng 1 lần".
+- **Bằng chứng đã hết lỗi**: gate chạy thật trên Postgres 15 docker (`RESULT: QC_INVENTORY PASS` 7/7 — DB stub roles/auth vì không có full Supabase stack, `auth.uid()` NULL); frontend `tsc` sạch, `oxlint` sạch, `vitest` 40 files/196 tests PASS, `vite build` OK.
+- **Cách phòng tránh lần sau**: RPC mới bắt buộc kèm audit + gate ngay trong cùng đợt (không để debt); không dùng `window.confirm`; logic gọi RPC dùng chung qua `lib/*Api.ts`.
+- **Liên quan**: `state.json:pending_contract_changes(rpc_inventory_audit_plus_binKK, gate_qc_inventory, frontend_debt_cleanup_bang3)`; db push cloud vẫn pending (thiếu SUPABASE_DB_PASSWORD) — 7 migration chờ.

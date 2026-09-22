@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import { downloadInventoryExcel } from '../lib/exportExcel';
 import { compareInventoryRow, detectSourceChange, type SourceBaseline } from '../lib/inventoryCompare';
+import { deleteInventoryRow } from '../lib/inventoryApi';
 import { supabase } from '../lib/supabase';
 import type { InventoryRow, ScanRow } from '../lib/types';
 
@@ -19,6 +20,8 @@ interface InventoryScanModalProps {
   scannedRows: ScanRow[];
   systemByBatch: Map<string, SystemNumbers>;
   onChanged?: () => void;
+  /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
+  actorName?: string | null;
 }
 
 export default function InventoryScanModal({
@@ -28,6 +31,7 @@ export default function InventoryScanModal({
   scannedRows,
   systemByBatch,
   onChanged,
+  actorName,
 }: InventoryScanModalProps) {
   const [mode, setMode] = useState<'location' | 'tag'>('location');
   const [activeBin, setActiveBin] = useState<string>(INVENTORY_WAITING_BIN);
@@ -44,7 +48,10 @@ export default function InventoryScanModal({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Modal xác nhận xóa dòng kiểm kê (custom, không dùng window.confirm native).
+  const [deletingRow, setDeletingRow] = useState<InventoryRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
   // Mốc nguồn chốt lúc mở modal (theo Tag): phát hiện file nguồn vừa nạp/sửa
   // làm đổi SL/Bin hệ thống của Tag đã kiểm kê → highlight riêng, không lẫn
@@ -188,6 +195,7 @@ export default function InventoryScanModal({
         p_qty: qVal,
         p_bin: activeBin,
         p_is_manual: false,
+        ...(actorName ? { p_actor_name: actorName } : {}),
       });
       if (error || (data as { ok?: unknown } | null)?.ok !== true) {
         setNotice(`❌ Lỗi lưu kiểm kê: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
@@ -203,22 +211,27 @@ export default function InventoryScanModal({
     }
   }
 
-  async function handleDeleteRow(id: string) {
-    if (!window.confirm('Xóa dòng kiểm kê này?')) return;
-    setDeletingId(id);
-    try {
-      // Xóa qua RPC SECURITY DEFINER (phiên anon không được delete thẳng).
-      const { data, error } = await supabase.rpc('delete_inventory_row', { p_id: id });
-      if (error || (data as { ok?: unknown } | null)?.ok !== true) {
-        setNotice(`❌ Lỗi xóa: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
-      } else {
-        onChanged?.();
-      }
-    } catch (err) {
-      setNotice(`❌ Lỗi kết nối: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setDeletingId(null);
+  function openDeleteModal(r: InventoryRow) {
+    setDeletingRow(r);
+    setDeleteNotice(null);
+  }
+
+  function closeDeleteModal() {
+    setDeletingRow(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deletingRow) return;
+    setIsDeleting(true);
+    setDeleteNotice(null);
+    const res = await deleteInventoryRow(deletingRow.id, actorName);
+    setIsDeleting(false);
+    if (!res.ok) {
+      setDeleteNotice(`❌ Lỗi xóa: ${res.message}`);
+      return;
     }
+    onChanged?.();
+    closeDeleteModal();
   }
 
   function resetTagForm() {
@@ -597,8 +610,7 @@ export default function InventoryScanModal({
                         <td className="px-2.5 py-1.5 text-center">
                           <button
                             type="button"
-                            disabled={deletingId === r.id}
-                            onClick={() => void handleDeleteRow(r.id)}
+                            onClick={() => openDeleteModal(r)}
                             title={`Xóa dòng kiểm kê ${r.batch_id}`}
                             aria-label={`Xóa dòng kiểm kê ${r.batch_id}`}
                             className="rounded-lg p-1 text-slate-500 transition hover:bg-rose-950/60 hover:text-rose-300 disabled:opacity-40"
@@ -614,6 +626,55 @@ export default function InventoryScanModal({
             )}
           </div>
         </div>
+
+        {/* Xác nhận xóa dòng kiểm kê — modal lồng (z cao hơn modal quét) */}
+        {deletingRow && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-delete-streaming-title"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md"
+          >
+            <div className="relative flex w-full max-w-sm flex-col rounded-3xl border border-rose-500/50 bg-slate-950 p-6 shadow-2xl">
+              <div className="flex items-center gap-3 border-b border-rose-500/20 pb-3">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <h3 id="confirm-delete-streaming-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
+                    Xóa Lượt Kiểm Kê?
+                  </h3>
+                  <p className="font-mono text-[11px] text-slate-400">
+                    Tag <strong className="text-cyan-300">{deletingRow.batch_id}</strong> • SL {deletingRow.qty} • Bin {deletingRow.bin}
+                  </p>
+                </div>
+              </div>
+
+              {deleteNotice && (
+                <p role="alert" className="mt-4 rounded-xl border border-rose-500/40 bg-rose-950/60 p-2.5 text-xs text-rose-200">
+                  {deleteNotice}
+                </p>
+              )}
+
+              <div className="flex gap-3 justify-end pt-4">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => closeDeleteModal()}
+                  className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => void handleConfirmDelete()}
+                  className="rounded-xl bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-rose-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+                >
+                  {isDeleting ? 'Đang xóa...' : '🗑️ Xác nhận xóa'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

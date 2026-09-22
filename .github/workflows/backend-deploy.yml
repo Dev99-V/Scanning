@@ -35,6 +35,9 @@ jobs:
       - name: QC gate Phase 3 (scan-submit + race)
         run: ./supabase/tests/qc_phase3.sh
         working-directory: backend
+      - name: QC gate inventory (audit kiểm kê + 7055 + recompute)
+        run: ./supabase/tests/qc_inventory.sh
+        working-directory: backend
       - name: Stop local stack
         if: always()
         run: supabase stop

@@ -215,24 +215,14 @@ describe('ReconciliationTable', () => {
     });
   });
 
-  it('fallback khi backend cloud chưa có p_new_bin: thử lại contract cũ, Tag/SL vẫn lưu', async () => {
-    // Lần 1 (kèm p_new_bin) bị PostgREST từ chối vì cloud chưa deploy migration;
-    // lần 2 (không p_new_bin) thành công — Bin mới báo rõ là chưa áp dụng.
-    rpc
-      .mockResolvedValueOnce({
-        data: null,
-        error: {
-          message:
-            'Could not find the function public.update_scanned_tag_id(p_actor_name, p_id, p_new_batch_id, p_new_bin, p_new_qty, p_stock_code) in the schema cache',
-        },
-      })
-      .mockResolvedValueOnce({ data: { ok: true }, error: null });
-    const onRowUpdated = vi.fn();
+  it('lỗi RPC thì gọi đúng 1 lần và hiện lỗi (không còn fallback contract cũ)', async () => {
+    // Nhánh fallback schema-cache đã xóa (cloud deploy migration từ 2026-09-16):
+    // lỗi backend hiện thẳng, không thử lại lần 2.
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'boom' } });
     render(
       <ReconciliationTable
-        rows={[row({ id: 'r-fallback', batch_id: 'TAG_001', qty: 5, bin: 'BIN_OLD' })]}
+        rows={[row({ id: 'r-err', batch_id: 'TAG_001', qty: 5, bin: 'BIN_OLD' })]}
         systemByBatch={new Map([['TAG_001', { stock_code: 'SKU_1', qty: 5, bin: 'BIN_OLD' }]])}
-        onRowUpdated={onRowUpdated}
       />,
     );
 
@@ -240,18 +230,15 @@ describe('ReconciliationTable', () => {
     fireEvent.change(screen.getByLabelText('Vị trí Bin quét mới'), { target: { value: 'BIN_NEW' } });
     fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
 
-    await waitFor(() => {
-      expect(rpc).toHaveBeenCalledTimes(2);
-      // Lần 2 không còn p_new_bin để khớp contract cũ trên cloud
-      expect(rpc).toHaveBeenLastCalledWith('update_scanned_tag_id', {
-        p_id: 'r-fallback',
-        p_new_batch_id: 'TAG_001',
-        p_stock_code: 'SKU_1',
-        p_new_qty: 5,
-      });
-      expect(onRowUpdated).toHaveBeenCalled();
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+    expect(rpc).toHaveBeenCalledWith('update_scanned_tag_id', {
+      p_id: 'r-err',
+      p_new_batch_id: 'TAG_001',
+      p_stock_code: 'SKU_1',
+      p_new_qty: 5,
+      p_new_bin: 'BIN_NEW',
     });
-    expect(screen.getByRole('alert')).toHaveTextContent(/backend cloud chưa deploy migration/i);
+    expect(screen.getByRole('alert')).toHaveTextContent(/Lỗi cập nhật: boom/);
   });
 
   it('bấm trực tiếp vào chữ Tag ID cũng mở modal chỉnh sửa', () => {
@@ -363,6 +350,38 @@ describe('ReconciliationTable', () => {
     expect(tr).toHaveTextContent(/Không còn trong nguồn/);
     expect(tr).not.toHaveTextContent('Khớp hoàn toàn');
     expect(tr.querySelectorAll('.text-rose-400').length).toBeGreaterThan(0);
+  });
+
+  it('công tắc 7055 ở Bảng 1: bật nhãn → gọi restore_tag_7055(p_value=true) + báo App đồng bộ Bảng 2', async () => {
+    const onTag7055Updated = vi.fn();
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-t1', batch_id: 'TOG01', qty: 5, bin: 'B1' })]}
+        systemByBatch={new Map([['TOG01', { stock_code: 'S1', qty: 5, bin: 'B1', tag_7055: false }]])}
+        onTag7055Updated={onTag7055Updated}
+      />,
+    );
+    const toggle = screen.getByTestId('toggle-7055-r-t1');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith('restore_tag_7055', {
+        p_batch_ids: ['TOG01'],
+        p_value: true,
+      }),
+    );
+    expect(onTag7055Updated).toHaveBeenCalledWith('TOG01', true);
+  });
+
+  it('công tắc 7055 ở Bảng 1: Tag ngoài nguồn thì nút bị khóa (không có dòng reference để gắn)', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-t2', batch_id: 'NOFEF01', qty: 5, bin: 'B1', status: 'not_in_reference' })]}
+        systemByBatch={new Map()}
+      />,
+    );
+    expect(screen.getByTestId('toggle-7055-r-t2')).toBeDisabled();
   });
 });
 

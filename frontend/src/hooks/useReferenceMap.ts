@@ -96,6 +96,19 @@ export function useReferenceMap() {
     });
   }, []);
 
+  // Công tắc 7055: bật/tắt nhãn Tag in thêm ở Bảng 1 hoặc Bảng 2 đều cập nhật
+  // cùng 1 map này nên cả 2 bảng + badge đồng bộ tức thì (realtime lo máy khác).
+  const updateBatch7055 = useCallback((batchId: string, value: boolean) => {
+    const cleanId = (batchId || '').trim();
+    setByBatch((prev) => {
+      const cur = prev.get(cleanId);
+      if (!cur || cur.tag_7055 === value) return prev;
+      const next = new Map(prev);
+      next.set(cleanId, { ...cur, tag_7055: value });
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     void load();
 
@@ -151,6 +164,6 @@ export function useReferenceMap() {
     return cleanup;
   }, [load]);
 
-  return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin, addBatch, removeBatch };
+  return { byBatch, loading, refetch: load, updateBatchQty, updateBatchBin, addBatch, removeBatch, updateBatch7055 };
 }
 

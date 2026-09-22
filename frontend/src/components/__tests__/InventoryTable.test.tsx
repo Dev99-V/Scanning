@@ -115,9 +115,9 @@ describe('InventoryTable', () => {
     expect(screen.getByTestId('inventory-row-i2')).toBeInTheDocument();
   });
 
-  it('xóa dòng qua RPC delete_inventory_row', async () => {
+  it('xóa dòng qua modal xác nhận custom (không window.confirm)', async () => {
     const onChanged = vi.fn();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(window, 'confirm');
     render(
       <InventoryTable
         inventoryRows={inventoryRows}
@@ -128,9 +128,15 @@ describe('InventoryTable', () => {
       />,
     );
     fireEvent.click(screen.getByLabelText('Xóa dòng kiểm kê TAG2'));
+    // Modal custom hiện, window.confirm không được gọi
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Xác Nhận Xóa Lượt Kiểm Kê')).toBeInTheDocument();
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('🗑️ Xác nhận xóa'));
     await waitFor(() => expect(mockRpc).toHaveBeenCalledWith('delete_inventory_row', { p_id: 'i2' }));
     expect(onChanged).toHaveBeenCalledTimes(1);
-    (window.confirm as unknown as { mockRestore: () => void }).mockRestore();
+    confirmSpy.mockRestore();
   });
 
   it('chưa có dữ liệu → empty state', () => {
@@ -138,5 +144,57 @@ describe('InventoryTable', () => {
       <InventoryTable inventoryRows={[]} scannedRows={[]} systemByBatch={new Map()} onOpenScan={() => {}} />,
     );
     expect(screen.getByTestId('inventory-empty')).toBeInTheDocument();
+  });
+
+  it('bấm nút sửa mở modal chỉnh sửa SL+Bin KK và gọi update_inventory_row', async () => {
+    const onChanged = vi.fn();
+    render(
+      <InventoryTable
+        inventoryRows={inventoryRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys}
+        onOpenScan={() => {}}
+        onChanged={onChanged}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa số lượng kiểm kê TAG2'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Chỉnh Sửa Số Lượng & Vị Trí Kiểm Kê')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Số lượng kiểm kê mới'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('Vị trí Bin kiểm kê mới'), { target: { value: 'BIN_NEW' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() =>
+      expect(mockRpc).toHaveBeenCalledWith('update_inventory_row', {
+        p_id: 'i2',
+        p_new_qty: 5,
+        p_new_bin: 'BIN_NEW',
+      }),
+    );
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('SL sai (0) hoặc Bin trống thì báo lỗi và không gọi RPC', () => {
+    render(
+      <InventoryTable
+        inventoryRows={inventoryRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys}
+        onOpenScan={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa số lượng kiểm kê TAG2'));
+
+    fireEvent.change(screen.getByLabelText('Số lượng kiểm kê mới'), { target: { value: '0' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+    expect(screen.getByRole('alert')).toHaveTextContent('Số lượng kiểm kê');
+    expect(mockRpc).not.toHaveBeenCalledWith('update_inventory_row', expect.anything());
+
+    fireEvent.change(screen.getByLabelText('Số lượng kiểm kê mới'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('Vị trí Bin kiểm kê mới'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+    expect(screen.getByRole('alert')).toHaveTextContent('Vị trí (Bin)');
+    expect(mockRpc).not.toHaveBeenCalledWith('update_inventory_row', expect.anything());
   });
 });

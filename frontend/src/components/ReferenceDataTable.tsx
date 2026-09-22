@@ -32,6 +32,8 @@ interface ReferenceDataTableProps {
   scannedRows?: ScanRow[];
   onQtyUpdated?: (batchId: string, newQty: number) => void;
   onBinUpdated?: (batchId: string, newBin: string) => void;
+  /** Bật/tắt nhãn 7055 ở Bảng 2 (hoặc Bảng 1) → App đồng bộ map tra cứu để cả 2 bảng cùng đổi tức thì. */
+  onTag7055Updated?: (batchId: string, value: boolean) => void;
   onReferenceAdded?: (newRow: ReferenceLine) => void;
   onReferenceDeleted?: (batchId: string) => void;
   /** Gọi sau khi nhập kho nhanh thành công để Bảng 1 refetch tức thì (realtime vẫn tự cập nhật). */
@@ -55,6 +57,7 @@ export default function ReferenceDataTable({
   scannedRows = [],
   onQtyUpdated,
   onBinUpdated,
+  onTag7055Updated,
   onReferenceAdded,
   onReferenceDeleted,
   onQuickImported,
@@ -244,6 +247,12 @@ export default function ReferenceDataTable({
   const [deletingRefRow, setDeletingRefRow] = useState<ReferenceLine | null>(null);
   const [isDeletingRef, setIsDeletingRef] = useState(false);
   const [deleteRefNotice, setDeleteRefNotice] = useState<string | null>(null);
+
+  // Công tắc 7055 từng dòng: bật/tắt nhãn Tag in thêm ngay trên Bảng 2.
+  // Nguồn thật duy nhất là reference_stock.tag_7055 (RPC restore_tag_7055 với
+  // p_value true/false); Bảng 1 đồng bộ qua map tra cứu + realtime đa máy.
+  const [toggling7055, setToggling7055] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   // Nhả khóa presence khi unmount thật (đóng tab giữa chừng) để dòng nguồn
   // không kẹt. Dùng ref để object presence mới (đổi mỗi khi peers đổi) không
@@ -542,6 +551,43 @@ export default function ReferenceDataTable({
       setDeleteRefNotice(`❌ Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsDeletingRef(false);
+    }
+  }
+
+  // ---- Công tắc 7055: bật/tắt nhãn Tag in thêm của 1 dòng nguồn ----
+  async function handleToggle7055(row: ReferenceLine) {
+    const cleanId = (row.batch_id || '').trim();
+    if (!cleanId || toggling7055 !== null) return;
+    const holder = presence?.getLock('table2', table2RowKey(row.batch_id));
+    if (holder) {
+      setActionNotice(`🔒 ${holder.name} đang thao tác dòng ${cleanId} — vui lòng chờ cập nhật mới.`);
+      return;
+    }
+    const next = !row.tag_7055;
+    setToggling7055(cleanId);
+    setActionNotice(null);
+    try {
+      const { data, error } = await supabase.rpc('restore_tag_7055', {
+        p_batch_ids: [cleanId],
+        p_value: next,
+        ...(actorName ? { p_actor_name: actorName } : {}),
+      });
+      if (error || (data as { ok?: unknown } | null)?.ok !== true) {
+        setActionNotice(
+          `❌ Lỗi đổi nhãn 7055 (${cleanId}): ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`,
+        );
+      } else {
+        // Đồng bộ tức thì máy này: dòng Bảng 2 + map tra cứu (Bảng 1 đọc badge
+        // từ map nên đổi theo ngay); máy khác tự đổi qua realtime reference_stock.
+        setRows((prev) =>
+          prev.map((r) => ((r.batch_id || '').trim() === cleanId ? { ...r, tag_7055: next } : r)),
+        );
+        onTag7055Updated?.(cleanId, next);
+      }
+    } catch (e) {
+      setActionNotice(`❌ Lỗi kết nối: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setToggling7055(null);
     }
   }
 
@@ -933,6 +979,11 @@ export default function ReferenceDataTable({
           </p>
         ) : (
           <div className="flex flex-col gap-2">
+            {actionNotice && (
+              <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2 text-xs text-rose-200">
+                {actionNotice}
+              </p>
+            )}
             <div
               onScroll={handleScroll}
               className="max-h-[440px] overflow-y-auto overflow-x-auto rounded-xl border border-white/10 bg-black/30 custom-scrollbar"
@@ -1192,9 +1243,34 @@ export default function ReferenceDataTable({
                           })()}
                         </td>
 
-                        {/* Thao tác nhanh: nhập kho sang Bảng 1 (+) + xóa dòng nguồn */}
+                        {/* Thao tác nhanh: công tắc 7055 + nhập kho sang Bảng 1 (+) + xóa dòng nguồn */}
                         <td className="px-3 py-2 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={Boolean(r.tag_7055)}
+                              onClick={() => void handleToggle7055(r)}
+                              disabled={Boolean(lockHolder) || toggling7055 === cleanBatch}
+                              title={
+                                lockHolder
+                                  ? `${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới`
+                                  : toggling7055 === cleanBatch
+                                    ? 'Đang đổi nhãn 7055...'
+                                    : r.tag_7055
+                                      ? 'Tắt nhãn 7055 cho Tag này (Bảng 1 đồng bộ theo)'
+                                      : 'Bật nhãn 7055 cho Tag này (Bảng 1 đồng bộ theo)'
+                              }
+                              aria-label={`Công tắc 7055 cho ${r.batch_id}`}
+                              data-testid={`toggle-7055-${cleanBatch}`}
+                              className={`rounded-lg border px-1.5 py-1 text-[11px] font-extrabold leading-none transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+                                r.tag_7055
+                                  ? 'border-purple-500/60 bg-purple-500/25 text-purple-200 shadow-sm hover:bg-purple-500/40'
+                                  : 'border-white/10 bg-white/5 text-slate-500 hover:border-purple-500/40 hover:text-purple-300'
+                              }`}
+                            >
+                              {toggling7055 === cleanBatch ? '⏳' : '🏷️'}
+                            </button>
                             <button
                               type="button"
                               onClick={() => openQuickModal(r)}

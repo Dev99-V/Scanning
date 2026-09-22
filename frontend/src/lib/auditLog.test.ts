@@ -62,4 +62,30 @@ describe('describeAuditEntry', () => {
     expect(actorDisplayName({ actor_name: null })).toBe('Ẩn danh');
     expect(actorDisplayName({ actor_name: '  ' })).toBe('Ẩn danh');
   });
+
+  it('nhật ký kiểm kê: thêm / sửa SL / xóa (kind đọc cả old_value)', () => {
+    const add = describeAuditEntry({
+      action: 'insert',
+      old_value: null,
+      new_value: { kind: 'inventory_add', batch_id: 'K1', stock_code: 'S', bin: 'B', qty: 4 },
+    });
+    expect(add.actionLabel).toBe('Thêm kiểm kê');
+    expect(add.tagId).toBe('K1');
+    expect(add.detail).toContain('SL 4');
+    const edit = describeAuditEntry({
+      action: 'edit',
+      old_value: { kind: 'inventory_update', batch_id: 'K1', qty: 4, bin: 'B1' },
+      new_value: { kind: 'inventory_update', batch_id: 'K1', qty: 9, bin: 'B2' },
+    });
+    expect(edit.actionLabel).toBe('Sửa kiểm kê');
+    expect(edit.detail).toContain('4 → 9');
+    expect(edit.detail).toContain('B1 → B2');
+    const del = describeAuditEntry({
+      action: 'delete',
+      old_value: { kind: 'inventory_delete', batch_id: 'K1', qty: 9, bin: 'B' },
+      new_value: null,
+    });
+    expect(del.actionLabel).toBe('Xóa kiểm kê');
+    expect(del.tagId).toBe('K1');
+  });
 });

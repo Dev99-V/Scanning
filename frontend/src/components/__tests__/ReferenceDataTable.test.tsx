@@ -398,8 +398,7 @@ describe('ReferenceDataTable', () => {
     expect(screen.getByTestId('ref-cell-qty-mismatch')).toHaveTextContent('1000');
   });
 
-  it('hiển thị badge 🏷️ 7055 bên cạnh Tag ID khi dòng có tag_7055=true', async () => {
-    // Ghi đè cho MỌI cuộc gọi range trong test này (cả fetch Bảng 2 lẫn fetch
+  it('hiển thị badge 🏷️ 7055 bên cạnh Tag ID khi dòng có tag_7055=true', async () => {    // Ghi đè cho MỌI cuộc gọi range trong test này (cả fetch Bảng 2 lẫn fetch
     // log của ActivityLogCard) — dùng Once sẽ bị hook log "cướp" mất lượt đầu.
     range.mockResolvedValue(
       {
@@ -597,6 +596,52 @@ describe('ReferenceDataTable', () => {
     for (const tag of ['100006070357', '100006070358', '199900013990', '999900003032']) {
       expect(screen.getAllByText(tag)).toHaveLength(1);
     }
+  });
+
+  it('công tắc 7055 ở Bảng 2: bật nhãn → gọi restore_tag_7055(p_value=true) + hiện badge + báo App đồng bộ', async () => {
+    const onTag7055Updated = vi.fn();
+    render(<ReferenceDataTable onTag7055Updated={onTag7055Updated} />);
+    await screen.findByText('3400010001');
+
+    // TAG001 chưa có nhãn → công tắc đang tắt, chưa có badge
+    const toggle = screen.getByTestId('toggle-7055-TAG001');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByTestId('ref-tag-7055-TAG001')).not.toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith('restore_tag_7055', {
+        p_batch_ids: ['TAG001'],
+        p_value: true,
+      }),
+    );
+    // Đồng bộ tức thì: badge hiện + App được báo để Bảng 1 đổi theo
+    expect(await screen.findByTestId('ref-tag-7055-TAG001')).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-7055-TAG001')).toHaveAttribute('aria-checked', 'true');
+    expect(onTag7055Updated).toHaveBeenCalledWith('TAG001', true);
+  });
+
+  it('công tắc 7055 ở Bảng 2: tắt nhãn đang bật → p_value=false + mất badge', async () => {
+    range.mockResolvedValue({
+      data: [{ ...ROWS[0], tag_7055: true }, ROWS[1]],
+      error: null,
+    });
+    const onTag7055Updated = vi.fn();
+    render(<ReferenceDataTable onTag7055Updated={onTag7055Updated} />);
+    await screen.findByText('3400010001');
+
+    expect(screen.getByTestId('toggle-7055-TAG001')).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByTestId('toggle-7055-TAG001'));
+
+    await waitFor(() =>
+      expect(rpc).toHaveBeenCalledWith('restore_tag_7055', {
+        p_batch_ids: ['TAG001'],
+        p_value: false,
+      }),
+    );
+    await waitFor(() => expect(screen.queryByTestId('ref-tag-7055-TAG001')).not.toBeInTheDocument());
+    expect(onTag7055Updated).toHaveBeenCalledWith('TAG001', false);
   });
 });
 

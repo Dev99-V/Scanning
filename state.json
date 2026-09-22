@@ -138,6 +138,36 @@
       "detail": "Fix mất nhãn 7055 sau nạp nguồn (2026-09-23, Learning.md cùng ngày): migration 20260923090000_restore_tag_7055.sql (RPC restore_tag_7055 hàng loạt + audit, grant anon/authenticated/service_role) + Edge import-reference snapshot flag trước delete và gắn lại sau upsert (tag biến mất khỏi file mới chỉ báo vanished, không dựng lại). Không đổi contract cũ (chỉ thêm field data). Cần db push + functions deploy import-reference. Chữa dữ liệu đã mất: chạy tay restore_tag_7055 với danh sách từ file Excel 7055 đã xuất (SQL mẫu trong notes_for_next_session).",
       "status": "pending_cloud_apply",
       "date": "2026-09-23"
+    },
+    {
+      "type": "rpc_update_inventory_row_plus_table3_edit_modal",
+      "detail": "User yêu cầu modal sửa Bảng 3 giống Bảng 1/2, sau đó đính chính CHỈ được sửa SL KK (Tag ID / Bin KK / Stock Code khóa): migration 20260924090000_update_inventory_row.sql (RPC update_inventory_row(p_id, p_new_qty) — chỉ update qty, validate qty>0 + not_found, grant anon/authenticated/service_role; không đổi submit/delete cũ) + frontend InventoryTable: cột THAO TÁC (✏️ + 🗑️), ô SL KK bấm để sửa, modal Chỉnh Sửa Số Lượng Kiểm Kê (info box read-only + 1 ô SL KK mới + validate + RPC). Verify: tsc PASS, lint PASS, vitest 39 files/185 tests PASS (2 tests mới), vite build OK.",
+      "status": "pending_cloud_apply",
+      "date": "2026-09-22"
+    },
+    {
+      "type": "frontend_only_7055_toggle_sync",
+      "detail": "User yêu cầu công tắc bật/tắt 7055 từng dòng ở cả Bảng 1 + Bảng 2, đổi 1 nơi cả 2 bảng đồng bộ (bật/tắt như nhau). Không migration mới: dùng lại RPC restore_tag_7055([1 batch], p_value true/false) + audit sẵn có. Frontend: useReferenceMap thêm updateBatch7055; App truyền onTag7055Updated cho cả 2 bảng; mỗi dòng có switch role=switch (tím khi bật, xám khi tắt, ⏳ khi đang lưu, tôn trọng khóa mềm presence); Bảng 1 khóa switch khi Tag ngoài nguồn; lỗi hiện actionNotice inline. Cùng máy đồng bộ tức thì qua updater chung, khác máy qua realtime reference_stock sẵn có. Verify: tsc PASS, lint PASS, vitest 39 files/189 tests PASS (4 tests mới), vite build OK. LƯU Ý: nút gọi restore_tag_7055 thuộc migration 20260923090000 — vẫn pending_cloud_apply nên cloud chưa bấm được tới khi db push xong.",
+      "status": "implemented_2026_09_22",
+      "date": "2026-09-22"
+    },
+    {
+      "type": "rpc_inventory_audit_plus_binKK",
+      "detail": "Trả nợ audit Bảng 3 + mở Bin KK (user đổi ý giữa chừng: cho sửa SL KK + Bin KK, vẫn khóa Tag/Mã hàng): migration 20260925090000_inventory_counts_audit.sql (3 RPC ghi scan_audit_log kind inventory_add/inventory_update/inventory_delete + p_actor_name OPTIONAL; update_inventory_row(p_id, p_new_qty=NULL, p_new_bin=NULL, p_actor_name=NULL), NULL=giữ cũ; DROP overload cũ + GRANT lại). Frontend: auditLog.ts mô tả 3 kind + actorName từ App xuống InventoryTable/InventoryScanModal; modal sửa Bảng 3 có thêm ô Bin KK. Verify DB thật: gate qc_inventory.sh PASS 7/7 trên Postgres 15 docker (stub roles/auth). Cần db push (đợt 7 migration).",
+      "status": "pending_cloud_apply",
+      "date": "2026-09-22"
+    },
+    {
+      "type": "gate_qc_inventory",
+      "detail": "Gate backend mới backend/supabase/tests/qc_inventory.sh (RESULT: QC_INVENTORY PASS/FAIL): migration idempotent, submit/update/delete kiểm kê + audit + validation, 7055 on/off + missing + audit, recompute stale→đúng + cưỡng chế duplicate, cleanup 0 sót. Đã wiring vào backend-deploy.yml job test. Chạy thật local PASS 7/7.",
+      "status": "implemented_2026_09_22",
+      "date": "2026-09-22"
+    },
+    {
+      "type": "frontend_debt_cleanup_bang3",
+      "detail": "Dọn nợ Bảng 3 + Bảng 1: mới lib/inventoryApi.ts (deleteInventoryRow/updateInventoryRow dùng chung); modal xóa custom thay window.confirm ở cả InventoryTable (dialog đầy đủ) và InventoryScanModal (dialog lồng z-60); xóa nhánh fallback schema-cache + test cũ ở ReconciliationTable (lỗi gọi đúng 1 lần). Verify: tsc PASS, lint PASS, vitest 40 files/196 tests PASS, vite build OK. Chỉ frontend, không đổi contract.",
+      "status": "implemented_2026_09_22",
+      "date": "2026-09-22"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {
@@ -213,5 +243,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-23 (KHẨN mất nhãn 7055): root cause = import-reference delete-nạp lại mà file Excel không có cột 7055 → reset hết flag gắn tay. Đã code xong: Edge snapshot+gắn lại sau upsert + RPC restore_tag_7055 (migration 20260923090000), Learning/pipeline/state đã ghi, vitest 183/183 + lint sạch. THỨ TỰ: (1) merge main cho backend-deploy chạy db push (2 migration mới) + functions deploy import-reference; (2) RỒI mới khôi phục nhãn đã mất: SQL Editor chạy select public.restore_tag_7055(array['TAG_ID_1','TAG_ID_2',...]) với danh sách lấy từ file 'Tag in thêm 7055 [ngày].xlsx' đã xuất trước đó; (3) verify badge 7055 + nạp thử file nguồn, nhãn phải còn. Nếu không còn file Excel cũ: Free không có auto-backup (chỉ Pro có daily backup 7 ngày) → gắn lại tay từng Tag qua thẻ Thêm Nguồn (tích 7055 + ghi đè). Nợ cũ: history tay 20260921090000 + kiểm tra 20260921100000 trên cloud."
+  "notes_for_next_session": "2026-09-23 (khôi phục 7055): file 'Tag in thêm 7055 2026-09-21.xlsx' đã có trong repo (untracked) — trích 198 Tag ID duy nhất (12 số, đầu 9999, ngày trong file 16–19/9, khớp 'đến 19/9'). Đã sinh restore_7055_20260921.sql (untracked, select restore_tag_7055(array[...198 ID...])). Quy tắc user chốt: ≤19/9 theo file; ≥20/9 theo create_date (SQL: restore_tag_7055(array(select batch_id ... where create_date >= '2026-09-20 +07'))). CHỜ user: xác nhận backend-deploy xanh → chạy 2 SQL → báo applied/missing → verify badge + xuất baseline mới."
 }

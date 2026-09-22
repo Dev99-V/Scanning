@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import InventoryScanModal from '../InventoryScanModal';
 import type { InventoryRow, ScanRow } from '../../lib/types';
@@ -148,5 +148,28 @@ describe('InventoryScanModal', () => {
       p_is_manual: false,
     });
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('xóa dòng kiểm kê qua modal lồng (không window.confirm)', async () => {
+    const onChanged = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    render(
+      <InventoryScanModal
+        isOpen
+        onClose={() => {}}
+        inventoryRows={invRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys10}
+        onChanged={onChanged}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('Xóa dòng kiểm kê TAG1'));
+    expect(screen.getByText('Xóa Lượt Kiểm Kê?')).toBeInTheDocument();
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('🗑️ Xác nhận xóa'));
+    await waitFor(() => expect(mockRpc).toHaveBeenCalledWith('delete_inventory_row', { p_id: 'inv1' }));
+    expect(onChanged).toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

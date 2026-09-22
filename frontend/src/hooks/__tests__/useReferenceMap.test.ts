@@ -84,6 +84,22 @@ describe('useReferenceMap', () => {
     expect(result.current.byBatch.has('B1')).toBe(false);
   });
 
+  it('updateBatch7055 đổi nhãn 7055 của 1 batch để công tắc Bảng 1/2 đồng bộ', async () => {
+    const { result } = renderHook(() => useReferenceMap());
+    await act(async () => {});
+    expect(result.current.byBatch.get('B1')?.tag_7055).toBe(false);
+    act(() => {
+      result.current.updateBatch7055('B1', true);
+    });
+    expect(result.current.byBatch.get('B1')?.tag_7055).toBe(true);
+    // Giữ nguyên qty/bin, batch lạ thì bỏ qua
+    expect(result.current.byBatch.get('B1')?.qty).toBe(10);
+    act(() => {
+      result.current.updateBatch7055('NOPE', true);
+    });
+    expect(result.current.byBatch.has('NOPE')).toBe(false);
+  });
+
   it('order ổn định theo batch_id (PK) + gộp nhiều trang không trùng key', async () => {    const fillers = Array.from({ length: 999 }, (_, i) => ({
       batch_id: `F${i}`,
       stock_code: 'SF',

@@ -35,6 +35,8 @@ interface ReconciliationTableProps {
   systemByBatch: Map<string, SystemNumbers>;
   onRowDeleted?: (id: string) => void;
   onRowUpdated?: () => void;
+  /** Bật/tắt nhãn 7055 ở Bảng 1 → App đồng bộ map tra cứu để Bảng 2 + badge cùng đổi tức thì. */
+  onTag7055Updated?: (batchId: string, value: boolean) => void;
   /** Presence realtime (khóa mềm theo dòng). Không bắt buộc để test cũ vẫn chạy. */
   presence?: UsePresenceApi | null;
   /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
@@ -43,13 +45,55 @@ interface ReconciliationTableProps {
   inventoryRows?: InventoryRow[];
 }
 
-export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, presence, actorName, inventoryRows = [] }: ReconciliationTableProps) {
+export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, onTag7055Updated, presence, actorName, inventoryRows = [] }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [deletingRow, setDeletingRow] = useState<ScanRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+
+  // Công tắc 7055 từng dòng quét: bật/tắt nhãn Tag in thêm ngay trên Bảng 1.
+  // Nguồn thật duy nhất là reference_stock.tag_7055 (RPC restore_tag_7055 với
+  // p_value true/false); Bảng 2 đồng bộ qua map tra cứu + realtime đa máy.
+  const [toggling7055Id, setToggling7055Id] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  async function handleToggle7055(r: ScanRow) {
+    const cleanBatch = (r.batch_id || '').trim();
+    const sys = systemByBatch.get(cleanBatch);
+    // Tag chưa có trong nguồn thì không có dòng reference để gắn nhãn.
+    if (!sys || toggling7055Id !== null) return;
+    const holder = presence?.getLock('table1', table1RowKey(r.id));
+    if (holder) {
+      setActionNotice(`🔒 ${holder.name} đang thao tác dòng ${cleanBatch} — vui lòng chờ cập nhật mới.`);
+      return;
+    }
+    const next = !sys.tag_7055;
+    setToggling7055Id(r.id);
+    setActionNotice(null);
+    try {
+      const { data, error } = await supabase.rpc('restore_tag_7055', {
+        p_batch_ids: [cleanBatch],
+        p_value: next,
+        ...(actorName ? { p_actor_name: actorName } : {}),
+      });
+      if (error || (data as { ok?: unknown } | null)?.ok !== true) {
+        setActionNotice(
+          `❌ Lỗi đổi nhãn 7055 (${cleanBatch}): ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`,
+        );
+      } else {
+        // Đồng bộ tức thì máy này: map tra cứu đổi → badge Bảng 1 đổi ngay,
+        // App truyền cùng updater cho Bảng 2 nên Bảng 2 đổi theo; máy khác
+        // tự đổi qua realtime reference_stock.
+        onTag7055Updated?.(cleanBatch, next);
+      }
+    } catch (err) {
+      setActionNotice(`❌ Lỗi kết nối: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setToggling7055Id(null);
+    }
+  }
 
   // State cho modal chỉnh sửa Tag ID & Số lượng & Vị trí quét
   const [editingRow, setEditingRow] = useState<ScanRow | null>(null);
@@ -119,41 +163,14 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     setIsSavingTag(true);
     setEditNotice(null);
     try {
-      const baseArgs = {
+      const { data, error } = await supabase.rpc('update_scanned_tag_id', {
         p_id: editingRow.id,
         p_new_batch_id: cleanTag,
         p_stock_code: manualStockCode.trim() || null,
         p_new_qty: cleanQty,
-        ...(actorName ? { p_actor_name: actorName } : {}),
-      };
-      // Thử contract mới (kèm p_new_bin) trước; nếu backend cloud chưa deploy
-      // migration 20260915090000 thì PostgREST báo "schema cache" -> fallback
-      // contract cũ để Tag/SL vẫn lưu được, không chặn công việc kho.
-      let { data, error } = await supabase.rpc('update_scanned_tag_id', {
-        ...baseArgs,
         p_new_bin: cleanBin,
+        ...(actorName ? { p_actor_name: actorName } : {}),
       });
-      const errText = `${error?.message ?? ''} ${(data as { error?: unknown } | null)?.error ?? ''}`;
-      const isSchemaCacheMiss =
-        errText.toLowerCase().includes('schema cache') ||
-        errText.includes('Could not find the function');
-      if (isSchemaCacheMiss) {
-        const retry = await supabase.rpc('update_scanned_tag_id', baseArgs);
-        data = retry.data;
-        error = retry.error;
-        if (!error && (data as { ok?: unknown } | null)?.ok === true) {
-          if (cleanBin !== editingRow.bin) {
-            setEditNotice(
-              '⚠️ Đã lưu Tag ID & Số lượng. Vị trí (Bin) mới CHƯA áp dụng vì backend cloud chưa deploy migration mới — nhờ admin chạy xong backend-deploy rồi sửa lại Bin.',
-            );
-            onRowUpdated?.();
-            return;
-          }
-          onRowUpdated?.();
-          closeEditModal();
-          return;
-        }
-      }
       if (error || (data as { ok?: unknown } | null)?.ok !== true) {
         setEditNotice(`❌ Lỗi cập nhật: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
       } else {
@@ -380,6 +397,12 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
           </button>
         </div>
       </div>
+
+      {actionNotice && (
+        <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/60 p-2 text-xs text-rose-200">
+          {actionNotice}
+        </p>
+      )}
 
       <div
         onScroll={handleScroll}
@@ -640,9 +663,36 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                     )}
                   </td>
 
-                  {/* Thao tác sửa Tag ID / xóa khi nhập nhầm */}
+                  {/* Thao tác: công tắc 7055 + sửa Tag ID / xóa khi nhập nhầm */}
                   <td className="px-3 py-2.5 text-center">
                     <div className="flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={Boolean(sys?.tag_7055)}
+                        onClick={() => void handleToggle7055(r)}
+                        disabled={!sys || Boolean(lockHolder) || toggling7055Id === r.id}
+                        title={
+                          !sys
+                            ? 'Tag chưa có trong nguồn nên không gắn nhãn 7055 được'
+                            : lockHolder
+                              ? `${lockHolder.name} đang thao tác dòng này — vui lòng chờ cập nhật mới`
+                              : toggling7055Id === r.id
+                                ? 'Đang đổi nhãn 7055...'
+                                : sys.tag_7055
+                                  ? 'Tắt nhãn 7055 cho Tag này (Bảng 2 đồng bộ theo)'
+                                  : 'Bật nhãn 7055 cho Tag này (Bảng 2 đồng bộ theo)'
+                        }
+                        aria-label={`Công tắc 7055 cho ${r.batch_id}`}
+                        data-testid={`toggle-7055-${r.id}`}
+                        className={`rounded-lg border px-1.5 py-1 text-[11px] font-extrabold leading-none transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 ${
+                          sys?.tag_7055
+                            ? 'border-purple-500/60 bg-purple-500/25 text-purple-200 shadow-sm hover:bg-purple-500/40'
+                            : 'border-transparent text-slate-500 hover:border-purple-500/40 hover:text-purple-300'
+                        }`}
+                      >
+                        {toggling7055Id === r.id ? '⏳' : '🏷️'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => openEditModal(r)}

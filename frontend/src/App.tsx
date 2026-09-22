@@ -27,7 +27,7 @@ export default function App() {
   const { rows, refetch } = useScannedData();
   // refetchReference BẮT BUỘC sau import nguồn: import xóa-nạp lại toàn bảng nên
   // map tra cứu không thể chỉ trông chờ realtime từng dòng (Bảng 1/Bảng 3 lệch im tới khi F5).
-  const { byBatch, refetch: refetchReference, updateBatchQty, updateBatchBin, addBatch, removeBatch } = useReferenceMap();
+  const { byBatch, refetch: refetchReference, updateBatchQty, updateBatchBin, addBatch, removeBatch, updateBatch7055 } = useReferenceMap();
   const { rows: inventoryRows, refetch: refetchInventory } = useInventoryCounts();
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
@@ -200,6 +200,7 @@ export default function App() {
           actorName={identity?.name ?? null}
           onRowDeleted={() => void refetch()}
           onRowUpdated={() => void refetch()}
+          onTag7055Updated={updateBatch7055}
         />
       </section>
 
@@ -219,6 +220,7 @@ export default function App() {
             updateBatchBin(batchId, newBin);
             void refetch();
           }}
+          onTag7055Updated={updateBatch7055}
           onReferenceAdded={(newRow) => {
             addBatch(newRow.batch_id, {
               stock_code: newRow.stock_code,
@@ -258,6 +260,7 @@ export default function App() {
           systemByBatch={byBatch}
           onOpenScan={() => setIsInventoryOpen(true)}
           onChanged={() => void refetchInventory()}
+          actorName={identity?.name ?? null}
         />
       </section>
 
@@ -279,6 +282,7 @@ export default function App() {
         scannedRows={rows}
         systemByBatch={byBatch}
         onChanged={() => void refetchInventory()}
+        actorName={identity?.name ?? null}
       />
 
       <OnlineUsersModal

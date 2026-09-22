@@ -11,6 +11,9 @@
 //   - sửa lượt quét:   action 'edit',    old/new {batch_id, stock_code, status, qty, bin}
 //   - sửa SL/Bin nguồn:action 'edit',    old/new {batch_id, kind:'reference_qty'|'reference_bin', qty|bin}
 //   - xóa lượt quét:   action 'delete',  old {batch_id, stock_code, qty, bin, status}
+//   - thêm kiểm kê:    action 'insert',  new {kind:'inventory_add', batch_id, stock_code, qty, bin}
+//   - sửa kiểm kê:      action 'edit',    old/new {kind:'inventory_update', batch_id, qty, bin}
+//   - xóa kiểm kê:     action 'delete',  old {kind:'inventory_delete', batch_id, stock_code, qty, bin}
 
 export interface AuditEntry {
   id: number;
@@ -60,7 +63,13 @@ export function describeAuditEntry(entry: Pick<AuditEntry, 'action' | 'old_value
   const action = entry.action || '';
   const nv = entry.new_value ?? {};
   const ov = entry.old_value ?? {};
-  const kind = typeof nv.kind === 'string' ? nv.kind : '';
+  // kind có thể nằm ở new_value (insert/edit) hoặc old_value (delete).
+  const kind =
+    typeof nv.kind === 'string'
+      ? nv.kind
+      : typeof ov.kind === 'string'
+        ? ov.kind
+        : '';
 
   if (action === 'insert' && kind === 'import') {
     return {
@@ -75,6 +84,14 @@ export function describeAuditEntry(entry: Pick<AuditEntry, 'action' | 'old_value
       actionLabel: nv.overwrote === true ? 'Ghi đè mã nguồn' : 'Thêm mã nguồn',
       tagId: str(nv.batch_id),
       detail: `Mã ${str(nv.stock_code)} • Kho ${str(nv.warehouse)} • Bin ${str(nv.bin)} • SL ${str(nv.qty)}`,
+    };
+  }
+
+  if (action === 'insert' && kind === 'inventory_add') {
+    return {
+      actionLabel: 'Thêm kiểm kê',
+      tagId: str(nv.batch_id),
+      detail: `Mã ${str(nv.stock_code)} • Bin ${str(nv.bin)} • SL ${str(nv.qty)}`,
     };
   }
 
@@ -111,6 +128,16 @@ export function describeAuditEntry(entry: Pick<AuditEntry, 'action' | 'old_value
     };
   }
 
+  if (action === 'edit' && kind === 'inventory_update') {
+    const parts = [`SL ${str(ov.qty)} → ${str(nv.qty)}`];
+    if (str(ov.bin) !== str(nv.bin)) parts.push(`Bin ${str(ov.bin)} → ${str(nv.bin)}`);
+    return {
+      actionLabel: 'Sửa kiểm kê',
+      tagId: str(nv.batch_id ?? ov.batch_id),
+      detail: parts.join(' • '),
+    };
+  }
+
   if (action === 'edit') {
     const tagChanged = str(nv.batch_id) !== str(ov.batch_id);
     return {
@@ -119,6 +146,14 @@ export function describeAuditEntry(entry: Pick<AuditEntry, 'action' | 'old_value
       detail: tagChanged
         ? `Tag ${str(ov.batch_id)} → ${str(nv.batch_id)} • SL ${str(nv.qty)}`
         : `SL ${str(ov.qty)} → ${str(nv.qty)} • ${statusLabel(nv.status)}`,
+    };
+  }
+
+  if (action === 'delete' && kind === 'inventory_delete') {
+    return {
+      actionLabel: 'Xóa kiểm kê',
+      tagId: str(ov.batch_id),
+      detail: `SL ${str(ov.qty)} • Bin ${str(ov.bin)}`,
     };
   }
 
