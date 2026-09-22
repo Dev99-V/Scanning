@@ -120,6 +120,18 @@
       "detail": "User check logic nạp nguồn vs Bảng 3 (2026-09-21): (1) import xóa-nạp lại toàn bảng nên byBatch (Bảng 1/Bảng 3) không thể chỉ trông chờ realtime từng dòng → ReferenceDataTable thêm prop onReferenceImported, App refetch useReferenceMap sau import thành công; (2) Bảng 3 chốt mốc nguồn lúc mở modal (lib detectSourceChange pure + baseline first-seen, chỉ bổ sung key mới khi đang mở) → dòng bị nguồn đổi sau mốc được viền vàng + badge 🔄 Nguồn vừa đổi + chi tiết cũ→mới + banner đếm Tag + nút chốt lại mốc. Chỉ frontend (prop optional, tương thích ngược). Verify: tsc PASS, lint PASS (sạch warning), vitest 37 files/168 tests PASS (mới 2 files/12 tests), vite build OK.",
       "status": "implemented_2026_09_21",
       "date": "2026-09-21"
+    },
+    {
+      "type": "rpc_recompute_after_import",
+      "detail": "Fix bug ảnh Bảng 1 lệch BIN vẫn báo Khớp (2026-09-22, xem pipeline.md §3/§5 + Learning.md 2026-09-22): migration 20260922090000_recompute_scanned_statuses.sql (RPC recompute_scanned_statuses: tính lại status toàn bảng theo nguồn hiện tại, btrim BIN, batch ≥2 lượt giữ duplicate, + backfill trong migration) + Edge import-reference gọi RPC sau upsert (kèm recomputed trong data + audit, lỗi không fail import). Không đổi params/returns cũ nên tương thích ngược. Cần supabase db push + functions deploy import-reference lên cloud (CI backend-deploy khi merge main; vẫn kẹt SUPABASE_DB_PASSWORD từ 2026-09-16).",
+      "status": "pending_cloud_apply",
+      "date": "2026-09-22"
+    },
+    {
+      "type": "frontend_only_recon_note_trim_perf",
+      "detail": "Cùng đợt 2026-09-22: (1) ReconciliationTable live-compare trim BIN 2 đầu, note không bao giờ 'Khớp hoàn toàn' khi đang lệch/mất nguồn (kể cả status stale), sys-null → cảnh báo đỏ; badge/KPI vẫn theo status (sẽ đúng sau RPC recompute); (2) useReferenceMap trim bin khi nạp/realtime/updateBatchBin; (3) lag nhẹ: bỏ alert-flash infinite ở .duplicate-alert (giữ màu/viền), header bỏ animate-ping, thêm prefers-reduced-motion. Chỉ frontend, không đổi contract. Verify: tsc PASS, lint PASS, vitest 39 files/183 tests PASS (3 tests hồi quy mới), vite build OK, QC_PHASE4/5/6 PASS.",
+      "status": "implemented_2026_09_22",
+      "date": "2026-09-22"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {
@@ -195,5 +207,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-21 (push abeeafe): frontend-deploy SUCCESS; backend-deploy test job PASS (P1-P3 xanh kèm migration 20260921090000) nhưng deploy job FAIL ở supabase link (Missing value for flag --password — SUPABASE_DB_PASSWORD vẫn trống, lỗi cũ từ 2026-09-16). VIỆC CÒN LẠI (user, theo thứ tự): (1) chạy tay insert history 20260921090000 vào schema_migrations (nếu không db push sau này lỗi already exists); (2) bổ sung SUPABASE_DB_PASSWORD vào GitHub Secrets rồi chạy lại backend-deploy (lúc đó db push sẽ bỏ qua 20260921090000 nhờ history, chỉ push migration mới hơn nếu có). Token sbp_ cũ đã dùng ngày 2026-09-16 vẫn cần rotate. Check 2026-09-21: password user đưa đã test qua pooler IPv4 (mạng tới Supabase OK) → server trả password authentication failed, tức KHÔNG phải DB password đúng; user cần lấy/reset trong Dashboard Project Settings → Database rồi tự thêm vào GitHub Secrets SUPABASE_DB_PASSWORD (không gửi pass qua chat, không lưu trong repo)."
+  "notes_for_next_session": "2026-09-22 (bug Bảng 1 lệch BIN vẫn báo Khớp + pipeline.md + giảm lag nhẹ): pipeline.md MỚI (kiến trúc + 2 nguồn sự thật badge/note + điểm sửa P0/P1/P2); migration 20260922090000_recompute_scanned_statuses.sql + Edge import-reference gọi recompute + frontend note/trim/perf đã xong local (tsc/lint/vitest 39 files/183 tests/build + QC_PHASE4/5/6 PASS, Learning.md đã ghi). CHƯA LÊN CLOUD: merge main để backend-deploy chạy db push + functions deploy (vẫn kẹt SUPABASE_DB_PASSWORD từ 2026-09-16 — user tự thêm secret, không gửi pass qua chat) + history 20260921090000 tay (việc cũ). Token sbp_ cũ vẫn cần rotate. Frontend deploy Pages xong là hết chữ đỏ 'Khớp hoàn toàn'; badge 'Khớp' stale tự đúng sau backend-deploy."
 }

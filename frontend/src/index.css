@@ -25,15 +25,19 @@ body {
   box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
 }
 
+/* Dòng trùng quét: giữ viền + nền cảnh báo TĨNH (không animation infinite).
+   Lý do PDA lag (2026-09-22): alert-flash chạy vô hạn trên mọi dòng trùng,
+   ép GPU vẽ lại liên tục. Bỏ animation, giữ nguyên nhận diện bằng màu sắc. */
 .duplicate-alert {
   background: rgba(244, 63, 94, 0.25) !important;
-  animation: alert-flash 0.8s infinite alternate;
   border-left: 4px solid #f43f5e !important;
 }
 
-@keyframes alert-flash {
-  from { box-shadow: inset 0 0 0px #f43f5e; }
-  to { box-shadow: inset 0 0 15px #f43f5e; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-online-in,
+  .animate-online-out {
+    animation: none;
+  }
 }
 
 /* Dải avatar online ở header: người mới vào trượt từ trái sang,

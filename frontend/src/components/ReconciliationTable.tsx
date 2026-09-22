@@ -404,8 +404,14 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
             {displayedRows.map((r) => {
               const cleanBatch = (r.batch_id || '').trim();
               const sys = systemByBatch.get(cleanBatch);
-              const isQtyDiff = sys && Number(sys.qty) !== Number(r.qty);
-              const isBinDiff = sys && sys.bin !== r.bin;
+              // Live-compare với nguồn HIỆN TẠI (pipeline.md §5): trim BIN 2 đầu
+              // trước khi so (đồng nhất với import TRIM + RPC btrim), nếu không
+              // "25 " vs "25" báo đỏ giả trong khi DB coi là khớp.
+              const sysBin = (sys?.bin ?? '').trim();
+              const scanBin = (r.bin ?? '').trim();
+              const isMissingSys = !sys;
+              const isQtyDiff = !!sys && Number(sys.qty) !== Number(r.qty);
+              const isBinDiff = !!sys && sysBin !== scanBin;
               const stockCode = r.stock_code ?? sys?.stock_code ?? '—';
               const scanCount = batchCounts.get(r.batch_id?.trim() ?? '') ?? 1;
               const isDuplicate = scanCount > 1 || r.status === 'duplicate';
@@ -414,18 +420,34 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
               // Khóa mềm realtime: dòng đang bị người khác sửa/xóa thì disable.
               const lockHolder = presence?.getLock('table1', table1RowKey(r.id)) ?? null;
 
-              // Ghi chú chi tiết cho dòng
+              // Ghi chú chi tiết cho dòng — NGUYÊN TẮC: không bao giờ hiển thị
+              // "Khớp hoàn toàn" khi live-compare đang lệch (bug ảnh: BIN 25 vs 01
+              // mà note đỏ "Khớp hoàn toàn"). status stale sau import được RPC
+              // recompute chữa ở DB; ở đây note luôn phản ánh nguồn hiện tại.
               let note = '';
               if (isDuplicate) {
                 note = scanCount > 1
                   ? `Trùng Tag ID (Quét ${scanCount} lần ở các vị trí khác nhau)`
                   : `Trùng Tag ID (${r.resolution === 'appended' ? 'Đã ghi thêm' : 'Đã đổi vị trí'})`;
+              } else if (isMissingSys) {
+                note = r.status === 'not_in_reference'
+                  ? 'Tag ID không có trong file nguồn'
+                  : `⚠️ Không còn trong nguồn (trạng thái lưu: ${STATUS_LABEL[r.status]} — chờ đối chiếu lại sau nạp nguồn)`;
+              } else if (isBinDiff || isQtyDiff) {
+                // Live-compare lệch thì note lệch — kể cả khi status còn 'ok' stale.
+                if (isBinDiff && isQtyDiff) {
+                  note = `Lệch cả SL và vị trí (Quét: ${r.qty}/${r.bin} / Nguồn: ${sys?.qty}/${sysBin || '—'})`;
+                } else if (isBinDiff) {
+                  note = `Lệch vị trí (Quét: ${r.bin} / Nguồn: ${sysBin || '—'})`;
+                } else {
+                  note = `Lệch số lượng (Quét: ${r.qty} / Nguồn: ${sys?.qty ?? '—'})`;
+                }
               } else if (r.status === 'ok') {
                 note = 'Khớp hoàn toàn';
               } else if (r.status === 'qty_mismatch') {
                 note = `Lệch số lượng (Quét: ${r.qty} / Nguồn: ${sys?.qty ?? '—'})`;
               } else if (r.status === 'bin_mismatch') {
-                note = `Lệch vị trí (Quét: ${r.bin} / Nguồn: ${sys?.bin ?? '—'})`;
+                note = `Lệch vị trí (Quét: ${r.bin} / Nguồn: ${sysBin || '—'})`;
               } else if (r.status === 'not_in_reference') {
                 note = 'Tag ID không có trong file nguồn';
               }
@@ -609,9 +631,9 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                       >
                         🔒 {lockHolder.name} đang thao tác
                       </span>
-                    ) : isDuplicate || isQtyDiff || isBinDiff || r.status === 'qty_mismatch' || r.status === 'bin_mismatch' ? (
+                    ) : isDuplicate || isMissingSys || isQtyDiff || isBinDiff || r.status === 'qty_mismatch' || r.status === 'bin_mismatch' ? (
                       <span className="text-rose-400 font-bold">{note}</span>
-                    ) : r.status === 'ok' ? (
+                    ) : r.status === 'ok' && !isMissingSys ? (
                       <span className="text-emerald-400 font-semibold">{note}</span>
                     ) : (
                       <span className="text-amber-300/90 font-medium">{note}</span>

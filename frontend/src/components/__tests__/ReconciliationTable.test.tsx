@@ -326,5 +326,43 @@ describe('ReconciliationTable', () => {
     expect(row1).toHaveTextContent(/Quét 2 lần ở các vị trí khác nhau/i);
     expect(row2).toHaveTextContent(/Quét 2 lần ở các vị trí khác nhau/i);
   });
+
+  it('BUG ẢNH: status ok stale nhưng BIN lệch nguồn → note Lệch vị trí, KHÔNG "Khớp hoàn toàn"', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-stale', batch_id: 'STALE01', qty: 958, bin: '25', status: 'ok' })]}
+        systemByBatch={new Map([['STALE01', { stock_code: 'S1', qty: 958, bin: '01' }]])}
+      />,
+    );
+    const tr = screen.getByTestId('recon-row-r-stale');
+    expect(tr).toHaveTextContent(/Lệch vị trí/);
+    expect(tr).toHaveTextContent(/Quét: 25 \/ Nguồn: 01/);
+    expect(tr).not.toHaveTextContent('Khớp hoàn toàn');
+  });
+
+  it('BIN đệm khoảng trắng không báo lệch giả (đồng nhất TRIM với import/RPC)', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-trim', batch_id: 'TRIM01', qty: 5, bin: '25', status: 'ok' })]}
+        systemByBatch={new Map([['TRIM01', { stock_code: 'S1', qty: 5, bin: '25 ' }]])}
+      />,
+    );
+    const tr = screen.getByTestId('recon-row-r-trim');
+    expect(tr).toHaveTextContent('Khớp hoàn toàn');
+    expect(tr).not.toHaveTextContent(/Lệch vị trí/);
+  });
+
+  it('mất khỏi nguồn mà status còn ok stale → cảnh báo đỏ, không xanh Khớp hoàn toàn', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-gone', batch_id: 'GONE01', qty: 5, bin: '020101', status: 'ok' })]}
+        systemByBatch={new Map()}
+      />,
+    );
+    const tr = screen.getByTestId('recon-row-r-gone');
+    expect(tr).toHaveTextContent(/Không còn trong nguồn/);
+    expect(tr).not.toHaveTextContent('Khớp hoàn toàn');
+    expect(tr.querySelectorAll('.text-rose-400').length).toBeGreaterThan(0);
+  });
 });
 

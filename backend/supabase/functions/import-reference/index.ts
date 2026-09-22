@@ -183,6 +183,22 @@ serve(async (req: Request) => {
     upserted += chunk.length;
   }
 
+  // Đối chiếu lại toàn bộ scanned_data theo nguồn mới (pipeline.md §3):
+  // nếu không, dòng quét cũ giữ status 'ok' dù BIN/QTY nguồn đã đổi
+  // (bug ảnh: BIN quét 25 vs BIN HT 01 mà vẫn báo Khớp).
+  // RPC giữ nguyên tắc duplicate + trim BIN; lỗi ở đây không fail cả lần import.
+  let recomputed: unknown = null;
+  try {
+    const { data: recompData, error: recompErr } = await supabase.rpc("recompute_scanned_statuses");
+    if (recompErr) {
+      console.error("recompute scanned statuses failed:", recompErr.message);
+    } else {
+      recomputed = recompData;
+    }
+  } catch (e) {
+    console.error("recompute scanned statuses threw:", e instanceof Error ? e.message : String(e));
+  }
+
   // Ghi 1 dòng nhật ký hoạt động cho lần import (hiện ở thẻ log Bảng 2).
   // Chỉ 1 dòng tóm tắt, không ghi từng batch để khỏi phình bảng log.
   const { error: auditErr } = await supabase.from("scan_audit_log").insert({
@@ -196,6 +212,7 @@ serve(async (req: Request) => {
       total_rows_in_file: dataRows.length,
       upserted,
       skipped: skipped.length,
+      recomputed,
     },
   });
   if (auditErr) {
@@ -211,6 +228,7 @@ serve(async (req: Request) => {
       upserted,
       skipped: skipped.length,
       skipped_rows: skipped.slice(0, 20),
+      recomputed,
     },
   });
 });

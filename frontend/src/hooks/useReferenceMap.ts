@@ -34,10 +34,12 @@ export function useReferenceMap() {
         if (error || !data || data.length === 0) break;
         for (const r of data as ReferenceRow[]) {
           if (!r?.batch_id) continue;
+          // Trim BIN như import đã TRIM (Plan.md §1): giữ map tra cứu đồng nhất
+          // với RPC btrim, tránh "25 " vs "25" báo đỏ giả ở Bảng 1.
           map.set(r.batch_id.trim(), {
             stock_code: r.stock_code,
             qty: r.qty,
-            bin: r.bin,
+            bin: (r.bin ?? '').trim(),
             tag_7055: Boolean(r.tag_7055),
           });
         }
@@ -64,11 +66,12 @@ export function useReferenceMap() {
 
   const updateBatchBin = useCallback((batchId: string, newBin: string) => {
     const cleanId = (batchId || '').trim();
+    const cleanBin = (newBin || '').trim();
     setByBatch((prev) => {
       const next = new Map(prev);
       const cur = next.get(cleanId);
       if (cur) {
-        next.set(cleanId, { ...cur, bin: newBin });
+        next.set(cleanId, { ...cur, bin: cleanBin });
       }
       return next;
     });
@@ -112,7 +115,7 @@ export function useReferenceMap() {
           next.set(cleanId, {
             stock_code: incoming.stock_code,
             qty: incoming.qty,
-            bin: incoming.bin,
+            bin: (incoming.bin ?? '').trim(),
             tag_7055: Boolean(incoming.tag_7055),
           });
           return next;

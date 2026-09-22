@@ -81,7 +81,8 @@ export default function App() {
       <header className="flex flex-col items-center justify-between gap-4 rounded-3xl border border-indigo-500/30 bg-slate-900/80 p-5 shadow-2xl backdrop-blur-md sm:flex-row">
         <div className="text-center sm:text-left">
           <div className="flex items-center justify-center gap-2 sm:justify-start">
-            <span className="h-2.5 w-2.5 animate-ping rounded-full bg-cyan-400"></span>
+            {/* Chấm trạng thái TĨNH (từng là animate-ping chạy vô hạn gây lag PDA). */}
+            <span className="h-2.5 w-2.5 rounded-full bg-cyan-400"></span>
             <h1 className="font-cyber text-xl font-black tracking-widest text-white sm:text-2xl">
               Inventory Discrepancy System
             </h1>

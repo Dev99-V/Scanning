@@ -28,6 +28,26 @@
 
 ## Nhật ký
 
+### [2026-09-22] Bảng 1 lệch BIN nhưng báo Khớp hoàn toàn (chữ đỏ) — status stale sau import nguồn
+
+- **Khu vực**: Edge `import-reference` + RPC `scan_submit`/`update_reference_*` + Frontend Bảng 1 (`ReconciliationTable.tsx`, `useReferenceMap.ts`) + `App.tsx` KPI
+- **Triệu chứng**: BIN quét `25` vs BIN hệ thống `01` nhưng badge TRẠNG THÁI xanh "Khớp", cột GHI CHÚ chữ đỏ "Khớp hoàn toàn" (ảnh user). Dòng mất khỏi nguồn (BIN HT `—`) cũng xanh "Khớp hoàn toàn".
+- **Nguyên nhân gốc** (đối chiếu code, không đoán):
+  1. `import-reference` xóa-nạp lại toàn bảng `reference_stock` nhưng KHÔNG tính lại `scanned_data.status` → dòng quét cũ giữ `status='ok'` dù nguồn mới đã đổi BIN/QTY. Badge + KPI đọc `r.status` (stale) trong khi ô BIN/note đọc live-compare `sys` mới → 2 nguồn sự thật trên cùng 1 hàng.
+  2. Live-compare `sys.bin !== r.bin` KHÔNG trim (trong khi import TRIM + Edge trim + `update_scanned_tag_id` btrim) → nguy cơ đỏ giả với BIN đệm trắng; `useReferenceMap` chỉ trim `batch_id`, giữ nguyên `bin` thô.
+  3. `sys` null (nguồn xóa tag) rơi vào nhánh xanh `status==='ok'` → "Khớp hoàn toàn" sai.
+  4. Hiệu ứng chạy vô hạn (`alert-flash 0.8s infinite` mọi dòng trùng + `animate-ping` header) ép PDA yếu vẽ lại liên tục → lag.
+- **Cách sửa** (user chốt: P0 + lag nhẹ, recompute bằng RPC sau import):
+  1. Migration `20260922090000_recompute_scanned_statuses.sql`: RPC `recompute_scanned_statuses()` (SECURITY DEFINER) tính lại status toàn bảng theo nguồn hiện tại (btrim BIN, tie-break lệch cả 2 → `bin_mismatch`, batch ≥2 lượt → giữ `duplicate`, chữa `pending`/duplicate-đơn-lẻ, chỉ chạm status/updated_at + stock_code khi null) + backfill 1 lần trong migration.
+  2. Edge `import-reference`: sau upsert gọi `rpc recompute_scanned_statuses` (lỗi không fail import), trả `recomputed` trong data + audit log.
+  3. `ReconciliationTable`: live-compare trim BIN 2 đầu; note KHÔNG bao giờ "Khớp hoàn toàn" khi đang lệch/mất nguồn (note lệch chi tiết Quét/Nguồn ngay cả khi status stale); `isMissingSys` → cảnh báo đỏ.
+  4. `useReferenceMap`: trim `bin` khi nạp + realtime + `updateBatchBin`.
+  5. Lag nhẹ (giữ thẩm mỹ): `.duplicate-alert` bỏ animation infinite (giữ màu/viền), header bỏ `animate-ping`, thêm `prefers-reduced-motion` tắt slide avatar.
+- **Bằng chứng đã hết lỗi**: `tsc -b` exit 0; `oxlint` sạch; `vitest` 39 files/183 tests PASS (mới 3 tests hồi quy: stale-ok→Lệch vị trí, trim-BIN không đỏ giả, mất nguồn→cảnh báo đỏ); `vite build` OK; gates QC_PHASE4/5/6 PASS.
+- **Cách phòng tránh lần sau**: mọi bulk import (xóa-nạp lại) bắt buộc recompute status trong cùng deploy; badge/note/KPI trên 1 hàng phải cùng 1 nguồn sự thật (live-compare), `status` DB chỉ là gợi ý lúc ghi; mọi so sánh chuỗi nghiệp vụ phải trim cả 2 đầu ở mọi tầng; không dùng animation infinite trên danh sách dài ở PDA.
+- **Liên quan**: Plan.md §4/§7.2/§9-Phase 5; Skills A/B; `pipeline.md` §3/§5/§8; `state.json:pending_contract_changes` (migration chờ `db push` cloud — cần `SUPABASE_DB_PASSWORD`, lỗi cũ từ 2026-09-16).
+- **CÒN LẠI CHO CLOUD**: migration + Edge mới chỉ nằm trên repo; cloud vẫn stale tới khi merge main chạy `backend-deploy` (đang kẹt thiếu `SUPABASE_DB_PASSWORD`) + `functions deploy import-reference`. Trước lúc đó, frontend mới (Pages) đã hết chữ đỏ "Khớp hoàn toàn", badge "Khớp" stale sẽ tự đúng sau deploy backend.
+
 ### [2026-09-15] Probe cloud: key đủ quyền, lỗi schema-cache do migration chưa lên cloud
 
 - **Khu vực**: Cloud Supabase project `pobabdgyukyufzzxbvsn` (diagnostic trực tiếp, không code)
