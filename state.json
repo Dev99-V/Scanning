@@ -1,6 +1,6 @@
 {
   "project_name": "pda-scan-reconciliation-system",
-  "last_updated": "2026-09-16",
+  "last_updated": "2026-09-22",
   "read_before_start": [
     "Plan.md",
     "Skills.md",
@@ -63,20 +63,20 @@
   "pending_contract_changes": [
     {
       "type": "realtime_publication",
-      "detail": "Migration 20260908090000_add_reference_stock_to_realtime.sql đưa reference_stock vào publication supabase_realtime; frontend (useReferenceMap + ReferenceDataTable) đã subscribe postgres_changes bảng này. Cần supabase db push lên cloud (CI backend-deploy khi merge main) thì Bảng 2 mới stream đa người live.",
-      "status": "pending_cloud_apply",
+      "detail": "Migration 20260908090000_add_reference_stock_to_realtime.sql đưa reference_stock vào publication supabase_realtime; frontend (useReferenceMap + ReferenceDataTable) đã subscribe postgres_changes bảng này. Cần supabase db push lên cloud (CI backend-deploy khi merge main) thì Bảng 2 mới stream đa người live. ĐÃ APPLY cloud 2026-09-22 (CI backend-deploy run 35700415178: test + deploy success).",
+      "status": "applied_2026_09_22",
       "date": "2026-09-08"
     },
     {
       "type": "rpc_concurrency_fix",
-      "detail": "Migration 20260909090000_add_reference_stock_advisory_lock.sql: add_reference_stock lấy pg_advisory_xact_lock chung namespace scan_submit theo batch trước SELECT. Không đổi params/returns nên frontend giữ nguyên. Cần supabase db push lên cloud (CI backend-deploy khi merge main).",
-      "status": "pending_cloud_apply",
+      "detail": "Migration 20260909090000_add_reference_stock_advisory_lock.sql: add_reference_stock lấy pg_advisory_xact_lock chung namespace scan_submit theo batch trước SELECT. Không đổi params/returns nên frontend giữ nguyên. ĐÃ APPLY cloud 2026-09-22 (CI backend-deploy run 35700415178).",
+      "status": "applied_2026_09_22",
       "date": "2026-09-09"
     },
     {
       "type": "activity_log_additive",
-      "detail": "Migration 20260909091000: actor_name + audit đủ (add/sửa nguồn/xóa quét) + realtime scan_audit_log; 7 RPC thêm p_actor_name OPTIONAL; Edge scan/resolve/import chuyển tiếp actor_name. Tương thích ngược (frontend cũ chạy được); deploy backend trước là an toàn tuyệt đối. Cần supabase db push + functions deploy lên cloud.",
-      "status": "pending_cloud_apply",
+      "detail": "Migration 20260909091000: actor_name + audit đủ (add/sửa nguồn/xóa quét) + realtime scan_audit_log; 7 RPC thêm p_actor_name OPTIONAL; Edge scan/resolve/import chuyển tiếp actor_name. Tương thích ngược (frontend cũ chạy được); deploy backend trước là an toàn tuyệt đối. ĐÃ APPLY cloud 2026-09-22 (CI backend-deploy run 35700415178: db push + functions deploy).",
+      "status": "applied_2026_09_22",
       "date": "2026-09-08"
     },
     {
@@ -111,8 +111,8 @@
     },
     {
       "type": "inventory_counts_table",
-      "detail": "User yêu cầu modal Quét Kiểm Kê cạnh EXPORT XLSX Bảng 1: migration 20260921090000_create_inventory_counts.sql (bảng inventory_counts riêng: id/batch_id/stock_code/qty/bin/scanned_by/scanned_at/is_manual + 2 index + RLS 4 policies authenticated + realtime publication). Frontend: InventoryRow types, useInventoryCounts (realtime), inventoryCompare.compareInventoryRow (KK vs tổng SL B1 + SL/Bin B2), export KiemKe XLSX text-format, InventoryScanModal (luồng Bin→Tag→SL tay giống PDA, Bảng 3 trong modal: STOCK CODE/TAG ID/BIN KK/SL KK/BIN B1/SL B1/BIN HT/SL HT/Cảnh báo). User đã nạp SQL bằng tay lên cloud 2026-09-21. CÒN THIẾU: dòng history schema_migrations (chưa ghi thì db push sau này apply lại → lỗi already exists) + cân nhắc policy anon SELECT (migration mới chỉ cấp authenticated; anon hiện đọc được 3 bảng cũ).",
-      "status": "applied_cloud_manual_history_pending",
+      "detail": "User yêu cầu modal Quét Kiểm Kê cạnh EXPORT XLSX Bảng 1: migration 20260921090000_create_inventory_counts.sql (bảng inventory_counts riêng: id/batch_id/stock_code/qty/bin/scanned_by/scanned_at/is_manual + 2 index + RLS 4 policies authenticated + realtime publication). Frontend: InventoryRow types, useInventoryCounts (realtime), inventoryCompare.compareInventoryRow (KK vs tổng SL B1 + SL/Bin B2), export KiemKe XLSX text-format, InventoryScanModal (luồng Bin→Tag→SL tay giống PDA, Bảng 3 trong modal: STOCK CODE/TAG ID/BIN KK/SL KK/BIN B1/SL B1/BIN HT/SL HT/Cảnh báo). User đã nạp SQL bằng tay lên cloud 2026-09-21. CÒN THIẾU: dòng history schema_migrations (chưa ghi thì db push sau này apply lại → lỗi already exists) + cân nhắc policy anon SELECT (migration mới chỉ cấp authenticated; anon hiện đọc được 3 bảng cũ). ĐÃ ỔN sau push 2026-09-22 (CI backend-deploy run 35700415178 success — db push không báo already exists, history đã đồng bộ).",
+      "status": "applied_2026_09_22",
       "date": "2026-09-21"
     },
     {
@@ -123,8 +123,8 @@
     },
     {
       "type": "rpc_recompute_after_import",
-      "detail": "Fix bug ảnh Bảng 1 lệch BIN vẫn báo Khớp (2026-09-22, xem pipeline.md §3/§5 + Learning.md 2026-09-22): migration 20260922090000_recompute_scanned_statuses.sql (RPC recompute_scanned_statuses: tính lại status toàn bảng theo nguồn hiện tại, btrim BIN, batch ≥2 lượt giữ duplicate, + backfill trong migration) + Edge import-reference gọi RPC sau upsert (kèm recomputed trong data + audit, lỗi không fail import). Không đổi params/returns cũ nên tương thích ngược. Cần supabase db push + functions deploy import-reference lên cloud (CI backend-deploy khi merge main; vẫn kẹt SUPABASE_DB_PASSWORD từ 2026-09-16).",
-      "status": "pending_cloud_apply",
+      "detail": "Fix bug ảnh Bảng 1 lệch BIN vẫn báo Khớp (2026-09-22, xem pipeline.md §3/§5 + Learning.md 2026-09-22): migration 20260922090000_recompute_scanned_statuses.sql (RPC recompute_scanned_statuses: tính lại status toàn bảng theo nguồn hiện tại, btrim BIN, batch ≥2 lượt giữ duplicate, + backfill trong migration) + Edge import-reference gọi RPC sau upsert (kèm recomputed trong data + audit, lỗi không fail import). Không đổi params/returns cũ nên tương thích ngược. Cần supabase db push + functions deploy import-reference lên cloud (CI backend-deploy khi merge main; vẫn kẹt SUPABASE_DB_PASSWORD từ 2026-09-16). ĐÃ APPLY cloud 2026-09-22 (CI backend-deploy run 35700415178: db push + functions deploy import-reference).",
+      "status": "applied_2026_09_22",
       "date": "2026-09-22"
     },
     {
@@ -135,26 +135,26 @@
     },
     {
       "type": "rpc_restore_tag_7055_plus_import_preserve",
-      "detail": "Fix mất nhãn 7055 sau nạp nguồn (2026-09-23, Learning.md cùng ngày): migration 20260923090000_restore_tag_7055.sql (RPC restore_tag_7055 hàng loạt + audit, grant anon/authenticated/service_role) + Edge import-reference snapshot flag trước delete và gắn lại sau upsert (tag biến mất khỏi file mới chỉ báo vanished, không dựng lại). Không đổi contract cũ (chỉ thêm field data). Cần db push + functions deploy import-reference. Chữa dữ liệu đã mất: chạy tay restore_tag_7055 với danh sách từ file Excel 7055 đã xuất (SQL mẫu trong notes_for_next_session).",
-      "status": "pending_cloud_apply",
+      "detail": "Fix mất nhãn 7055 sau nạp nguồn (2026-09-23, Learning.md cùng ngày): migration 20260923090000_restore_tag_7055.sql (RPC restore_tag_7055 hàng loạt + audit, grant anon/authenticated/service_role) + Edge import-reference snapshot flag trước delete và gắn lại sau upsert (tag biến mất khỏi file mới chỉ báo vanished, không dựng lại). Không đổi contract cũ (chỉ thêm field data). Cần db push + functions deploy import-reference. Chữa dữ liệu đã mất: chạy tay restore_tag_7055 với danh sách từ file Excel 7055 đã xuất (SQL mẫu trong notes_for_next_session). ĐÃ APPLY cloud 2026-09-22 (CI backend-deploy run 35700415178). Dữ liệu nhãn user đã chạy tay restore TRƯỚC ĐÓ nên TUYỆT ĐỐI KHÔNG chạy lại file restore.",
+      "status": "applied_2026_09_22",
       "date": "2026-09-23"
     },
     {
       "type": "rpc_update_inventory_row_plus_table3_edit_modal",
-      "detail": "User yêu cầu modal sửa Bảng 3 giống Bảng 1/2, sau đó đính chính CHỈ được sửa SL KK (Tag ID / Bin KK / Stock Code khóa): migration 20260924090000_update_inventory_row.sql (RPC update_inventory_row(p_id, p_new_qty) — chỉ update qty, validate qty>0 + not_found, grant anon/authenticated/service_role; không đổi submit/delete cũ) + frontend InventoryTable: cột THAO TÁC (✏️ + 🗑️), ô SL KK bấm để sửa, modal Chỉnh Sửa Số Lượng Kiểm Kê (info box read-only + 1 ô SL KK mới + validate + RPC). Verify: tsc PASS, lint PASS, vitest 39 files/185 tests PASS (2 tests mới), vite build OK.",
-      "status": "pending_cloud_apply",
+      "detail": "User yêu cầu modal sửa Bảng 3 giống Bảng 1/2, sau đó đính chính CHỈ được sửa SL KK (Tag ID / Bin KK / Stock Code khóa): migration 20260924090000_update_inventory_row.sql (RPC update_inventory_row(p_id, p_new_qty) — chỉ update qty, validate qty>0 + not_found, grant anon/authenticated/service_role; không đổi submit/delete cũ) + frontend InventoryTable: cột THAO TÁC (✏️ + 🗑️), ô SL KK bấm để sửa, modal Chỉnh Sửa Số Lượng Kiểm Kê (info box read-only + 1 ô SL KK mới + validate + RPC). Verify: tsc PASS, lint PASS, vitest 39 files/185 tests PASS (2 tests mới), vite build OK. ĐÃ APPLY cloud 2026-09-22 (CI backend-deploy run 35700415178; bản cuối là audit migration 20260925090000).",
+      "status": "applied_2026_09_22",
       "date": "2026-09-22"
     },
     {
       "type": "frontend_only_7055_toggle_sync",
-      "detail": "User yêu cầu công tắc bật/tắt 7055 từng dòng ở cả Bảng 1 + Bảng 2, đổi 1 nơi cả 2 bảng đồng bộ (bật/tắt như nhau). Không migration mới: dùng lại RPC restore_tag_7055([1 batch], p_value true/false) + audit sẵn có. Frontend: useReferenceMap thêm updateBatch7055; App truyền onTag7055Updated cho cả 2 bảng; mỗi dòng có switch role=switch (tím khi bật, xám khi tắt, ⏳ khi đang lưu, tôn trọng khóa mềm presence); Bảng 1 khóa switch khi Tag ngoài nguồn; lỗi hiện actionNotice inline. Cùng máy đồng bộ tức thì qua updater chung, khác máy qua realtime reference_stock sẵn có. Verify: tsc PASS, lint PASS, vitest 39 files/189 tests PASS (4 tests mới), vite build OK. LƯU Ý: nút gọi restore_tag_7055 thuộc migration 20260923090000 — vẫn pending_cloud_apply nên cloud chưa bấm được tới khi db push xong.",
+      "detail": "User yêu cầu công tắc bật/tắt 7055 từng dòng ở cả Bảng 1 + Bảng 2, đổi 1 nơi cả 2 bảng đồng bộ (bật/tắt như nhau). Không migration mới: dùng lại RPC restore_tag_7055([1 batch], p_value true/false) + audit sẵn có. Frontend: useReferenceMap thêm updateBatch7055; App truyền onTag7055Updated cho cả 2 bảng; mỗi dòng có switch role=switch (tím khi bật, xám khi tắt, ⏳ khi đang lưu, tôn trọng khóa mềm presence); Bảng 1 khóa switch khi Tag ngoài nguồn; lỗi hiện actionNotice inline. Cùng máy đồng bộ tức thì qua updater chung, khác máy qua realtime reference_stock sẵn có. Verify: tsc PASS, lint PASS, vitest 39 files/189 tests PASS (4 tests mới), vite build OK. LƯU Ý: nút gọi restore_tag_7055 thuộc migration 20260923090000 — ĐÃ THÔNG sau push 2026-09-22, bấm được trên cloud.",
       "status": "implemented_2026_09_22",
       "date": "2026-09-22"
     },
     {
       "type": "rpc_inventory_audit_plus_binKK",
-      "detail": "Trả nợ audit Bảng 3 + mở Bin KK (user đổi ý giữa chừng: cho sửa SL KK + Bin KK, vẫn khóa Tag/Mã hàng): migration 20260925090000_inventory_counts_audit.sql (3 RPC ghi scan_audit_log kind inventory_add/inventory_update/inventory_delete + p_actor_name OPTIONAL; update_inventory_row(p_id, p_new_qty=NULL, p_new_bin=NULL, p_actor_name=NULL), NULL=giữ cũ; DROP overload cũ + GRANT lại). Frontend: auditLog.ts mô tả 3 kind + actorName từ App xuống InventoryTable/InventoryScanModal; modal sửa Bảng 3 có thêm ô Bin KK. Verify DB thật: gate qc_inventory.sh PASS 7/7 trên Postgres 15 docker (stub roles/auth). Cần db push (đợt 7 migration).",
-      "status": "pending_cloud_apply",
+      "detail": "Trả nợ audit Bảng 3 + mở Bin KK (user đổi ý giữa chừng: cho sửa SL KK + Bin KK, vẫn khóa Tag/Mã hàng): migration 20260925090000_inventory_counts_audit.sql (3 RPC ghi scan_audit_log kind inventory_add/inventory_update/inventory_delete + p_actor_name OPTIONAL; update_inventory_row(p_id, p_new_qty=NULL, p_new_bin=NULL, p_actor_name=NULL), NULL=giữ cũ; DROP overload cũ + GRANT lại). Frontend: auditLog.ts mô tả 3 kind + actorName từ App xuống InventoryTable/InventoryScanModal; modal sửa Bảng 3 có thêm ô Bin KK. Verify DB thật: gate qc_inventory.sh PASS 7/7 trên Postgres 15 docker (stub roles/auth). ĐÃ APPLY cloud 2026-09-22 (CI backend-deploy run 35700415178).",
+      "status": "applied_2026_09_22",
       "date": "2026-09-22"
     },
     {
@@ -243,5 +243,5 @@
       }
     }
   },
-  "notes_for_next_session": "2026-09-23 (khôi phục 7055): file 'Tag in thêm 7055 2026-09-21.xlsx' đã có trong repo (untracked) — trích 198 Tag ID duy nhất (12 số, đầu 9999, ngày trong file 16–19/9, khớp 'đến 19/9'). Đã sinh restore_7055_20260921.sql (untracked, select restore_tag_7055(array[...198 ID...])). Quy tắc user chốt: ≤19/9 theo file; ≥20/9 theo create_date (SQL: restore_tag_7055(array(select batch_id ... where create_date >= '2026-09-20 +07'))). CHỜ user: xác nhận backend-deploy xanh → chạy 2 SQL → báo applied/missing → verify badge + xuất baseline mới."
+  "notes_for_next_session": "2026-09-22 (sau push ecee208): user xác nhận restore_7055_20260921.sql ĐÃ CHẠY TRƯỚC ĐÓ — TUYỆT ĐỐI KHÔNG chạy lại (tránh ghi audit trùng). Sau backend-deploy xanh chỉ verify: badge 7055 hiện đúng + test công tắc 7055 + modal sửa SL/Bin Bảng 3 + nhật ký kiểm kê có dòng mới. File 'Tag in thêm 7055 2026-09-21.xlsx' + restore_7055_20260921.sql vẫn untracked trong repo (giữ làm baseline đối chiếu, không commit vội)."
 }
