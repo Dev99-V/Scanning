@@ -201,6 +201,13 @@ export default function App() {
           onRowDeleted={() => void refetch()}
           onRowUpdated={() => void refetch()}
           onTag7055Updated={updateBatch7055}
+          // Sửa SL/Bin hệ thống ngay từ Bảng 1: cùng updater với Bảng 2 nên
+          // Bảng 2 + Bảng 3 đổi theo tức thì cùng máy, realtime lo máy khác.
+          onSystemQtyUpdated={updateBatchQty}
+          onSystemBinUpdated={(batchId, newBin) => {
+            updateBatchBin(batchId, newBin);
+            void refetch();
+          }}
         />
       </section>
 

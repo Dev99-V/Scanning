@@ -168,6 +168,18 @@
       "detail": "Dọn nợ Bảng 3 + Bảng 1: mới lib/inventoryApi.ts (deleteInventoryRow/updateInventoryRow dùng chung); modal xóa custom thay window.confirm ở cả InventoryTable (dialog đầy đủ) và InventoryScanModal (dialog lồng z-60); xóa nhánh fallback schema-cache + test cũ ở ReconciliationTable (lỗi gọi đúng 1 lần). Verify: tsc PASS, lint PASS, vitest 40 files/196 tests PASS, vite build OK. Chỉ frontend, không đổi contract.",
       "status": "implemented_2026_09_22",
       "date": "2026-09-22"
+    },
+    {
+      "type": "rpc_inventory_block_duplicate_upper_bin",
+      "detail": "User chốt 2026-09-24 (Bảng 3): (1) CHẶN CỨNG trùng TAG ở modal Quét Kiểm Kê — submit_inventory_count trả duplicate_batch_id (kèm advisory lock inventory_submit: chống race 2 máy), frontend chặn ở UI + rẽ nhánh error.code, không ghi dòng mới; trùng cũ gom xuống cuối bảng (sortInventoryDupLast, không thêm UI); (2) UPPER+TRIM BIN mọi tầng — RPC submit/update inventory + recompute so sánh upper + backfill upper 3 bảng (raw giữ nguyên), Edge import-reference bin upper, frontend mọi ô Bin quét/sửa upper trước khi gửi + compare case-insensitive; (3) Đồng bộ sau nạp nguồn giữ nguyên cơ chế hiện có (App refetchReference sau import + mốc baseline/viền vàng trong modal), warnings live-compare luôn theo nguồn mới. Migration 20260926090000_inventory_block_duplicate_upper_bin.sql + gate qc_inventory.sh mở rộng 7→9 checks. Cần supabase db push + functions deploy import-reference lên cloud (CI backend-deploy khi merge main).",
+      "status": "implementing_2026_09_24",
+      "date": "2026-09-24"
+    },
+    {
+      "type": "frontend_only_table1_system_edit",
+      "detail": "User yêu cầu 2026-09-24: sửa SL/Bin HỆ THỐNG ngay từ Bảng 1 khỏi lướt xuống Bảng 2. Modal sửa Bảng 1 tách 2 khối rõ: Khối A Dữ liệu quét (cyan, RPC update_scanned_tag_id như cũ) + Khối B Dữ liệu hệ thống (amber, SL/Bin nguồn của Tag gốc, nút lưu riêng gọi update_reference_qty/update_reference_bin hiện có — chỉ gọi trường đổi, Bin UPPER+TRIM, tôn trọng khóa mềm table2). Đồng bộ: App truyền updateBatchQty/updateBatchBin(+refetch) xuống onSystemQtyUpdated/onSystemBinUpdated nên Bảng 2+Bảng 3 đổi tức thì cùng máy, realtime lo máy khác; RPC Bảng 2 đã tự tính lại status quét ở DB. Tag ngoài nguồn: Khối B khóa + hướng dẫn sang Bảng 2. Chỉ frontend, không migration mới, không đổi contract backend. Verify 2026-09-24: tsc PASS, lint PASS, vitest 40 files/211 tests PASS (mới 4 tests Khối B), vite build OK.",
+      "status": "implemented_2026_09_24",
+      "date": "2026-09-24"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {

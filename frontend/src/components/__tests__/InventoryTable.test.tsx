@@ -197,4 +197,45 @@ describe('InventoryTable', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Vị trí (Bin)');
     expect(mockRpc).not.toHaveBeenCalledWith('update_inventory_row', expect.anything());
   });
+
+  it('Bin sửa nhập thường b4 → RPC nhận B4 đã UPPER', async () => {
+    const onChanged = vi.fn();
+    render(
+      <InventoryTable
+        inventoryRows={inventoryRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys}
+        onOpenScan={() => {}}
+        onChanged={onChanged}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa số lượng kiểm kê TAG2'));
+    fireEvent.change(screen.getByLabelText('Số lượng kiểm kê mới'), { target: { value: '5' } });
+    fireEvent.change(screen.getByLabelText('Vị trí Bin kiểm kê mới'), { target: { value: 'b4' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() =>
+      expect(mockRpc).toHaveBeenCalledWith('update_inventory_row', {
+        p_id: 'i2',
+        p_new_qty: 5,
+        p_new_bin: 'B4',
+      }),
+    );
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('dòng trùng Tag nội bộ gom xuống cuối bảng, cảnh báo dòng đơn giữ nguyên', () => {
+    const dupRows: InventoryRow[] = [
+      { id: 'd1', batch_id: 'DUP', stock_code: 'ST', qty: 1, bin: 'B1', is_manual: false, scanned_at: '' },
+      { id: 's1', batch_id: 'SINGLE', stock_code: 'ST', qty: 1, bin: 'B1', is_manual: false, scanned_at: '' },
+      { id: 'd2', batch_id: 'DUP', stock_code: 'ST', qty: 1, bin: 'B1', is_manual: false, scanned_at: '' },
+    ];
+    const { container } = render(
+      <InventoryTable inventoryRows={dupRows} scannedRows={[]} systemByBatch={new Map()} onOpenScan={() => {}} />,
+    );
+    const ids = Array.from(container.querySelectorAll('[data-testid^="inventory-row-"]')).map((el) =>
+      el.getAttribute('data-testid'),
+    );
+    expect(ids).toEqual(['inventory-row-s1', 'inventory-row-d1', 'inventory-row-d2']);
+  });
 });

@@ -6,7 +6,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import { downloadInventoryExcel } from '../lib/exportExcel';
-import { compareInventoryRow, detectSourceChange, type SourceBaseline } from '../lib/inventoryCompare';
+import { compareInventoryRow, detectSourceChange, normBin, sortInventoryDupLast, type SourceBaseline } from '../lib/inventoryCompare';
 import { deleteInventoryRow } from '../lib/inventoryApi';
 import { supabase } from '../lib/supabase';
 import type { InventoryRow, ScanRow } from '../lib/types';
@@ -67,7 +67,8 @@ export default function InventoryScanModal({
       const s = systemByBatch.get(k);
       m.set(k, {
         qty: s ? Number(s.qty) : NaN,
-        bin: s ? (s.bin || '').trim() : '',
+        // Chuẩn hóa UPPER để b4/B4 không bị gắn cờ "nguồn vừa đổi" giả.
+        bin: s ? normBin(s.bin) : '',
       });
     }
     return m;
@@ -93,7 +94,7 @@ export default function InventoryScanModal({
         const k = (r.batch_id || '').trim();
         if (!k || next.has(k)) continue;
         const s = systemByBatch.get(k);
-        next.set(k, { qty: s ? Number(s.qty) : NaN, bin: s ? (s.bin || '').trim() : '' });
+        next.set(k, { qty: s ? Number(s.qty) : NaN, bin: s ? normBin(s.bin) : '' });
         added = true;
       }
       return added ? next : prev;
@@ -120,7 +121,8 @@ export default function InventoryScanModal({
 
   function handleBinSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    const val = binInput.trim();
+    // UPPER + TRIM mọi chữ cái ở cột BIN QUÉT: b4 -> B4 (user chốt 2026-09-24).
+    const val = binInput.trim().toUpperCase();
     if (!val) return;
     setActiveBin(val);
     setBinInput('');
@@ -184,6 +186,14 @@ export default function InventoryScanModal({
     }
 
     const finalStockCode = stockCodeInput.trim() || matchedStockCode || null;
+    // CHẶN CỨNG trùng TAG ID trong Bảng 3 (user chốt 2026-09-24): đã có thì
+    // không gọi RPC, báo rõ + giữ form để quét Tag khác. RPC cũng chặn ở DB
+    // (duplicate_batch_id) chống lọt khi 2 máy quét cùng lúc.
+    if (inventoryRows.some((r) => (r.batch_id || '').trim() === tag)) {
+      setNotice(`⛔ Đã chặn lưu trùng: Tag ${tag} đã có trong bảng kiểm kê. Hãy sửa/xóa dòng cũ ở Bảng 3 bên dưới.`);
+      tagInputRef.current?.focus();
+      return;
+    }
     setBusy(true);
     setNotice(null);
     try {
@@ -198,7 +208,12 @@ export default function InventoryScanModal({
         ...(actorName ? { p_actor_name: actorName } : {}),
       });
       if (error || (data as { ok?: unknown } | null)?.ok !== true) {
-        setNotice(`❌ Lỗi lưu kiểm kê: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
+        const code = (data as { error?: unknown } | null)?.error;
+        if (code === 'duplicate_batch_id') {
+          setNotice(`⛔ Đã chặn lưu trùng: Tag ${tag} đã có trong bảng kiểm kê. Hãy sửa/xóa dòng cũ ở Bảng 3 bên dưới.`);
+        } else {
+          setNotice(`❌ Lỗi lưu kiểm kê: ${error?.message || code || 'Không xác định'}`);
+        }
       } else {
         setSuccessNotice(`✅ Đã lưu kiểm kê: ${tag} (SL: ${qVal}, Bin: ${activeBin})`);
         resetTagForm();
@@ -254,8 +269,10 @@ export default function InventoryScanModal({
     setTimeout(() => binInputRef.current?.focus(), 50);
   }
 
-  const uniqueRows = inventoryRows.filter(
-    (r, idx, arr) => arr.findIndex((x) => x.id === r.id) === idx,
+  const uniqueRows = sortInventoryDupLast(
+    inventoryRows.filter(
+      (r, idx, arr) => arr.findIndex((x) => x.id === r.id) === idx,
+    ),
   );
 
   // Dòng bị nguồn "đụng" sau mốc chốt (nạp file mới / sửa SL-Bin Bảng 2 khi modal đang mở).
@@ -416,7 +433,7 @@ export default function InventoryScanModal({
               {isDuplicateInInventory && (
                 <div className="rounded-xl border border-rose-500/60 bg-rose-950/40 p-3 text-xs">
                   <p className="font-bold text-rose-300">
-                    ⚠️ Tag {tagInput} đã có trong bảng kiểm kê — lưu tiếp sẽ tạo dòng mới, đối chiếu vẫn tính tổng.
+                    ⛔ Tag {tagInput.trim()} đã có trong bảng kiểm kê — KHÔNG được ghi trùng. Hãy sửa/xóa dòng cũ ở Bảng 3 bên dưới.
                   </p>
                 </div>
               )}

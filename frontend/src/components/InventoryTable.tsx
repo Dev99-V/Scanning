@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import { downloadInventoryExcel } from '../lib/exportExcel';
-import { compareInventoryRow } from '../lib/inventoryCompare';
+import { compareInventoryRow, sortInventoryDupLast } from '../lib/inventoryCompare';
 import { deleteInventoryRow, updateInventoryRow } from '../lib/inventoryApi';
 import type { InventoryRow, ScanRow } from '../lib/types';
 
@@ -48,7 +48,12 @@ export default function InventoryTable({
   const [editNotice, setEditNotice] = useState<string | null>(null);
 
   const uniqueRows = React.useMemo(
-    () => inventoryRows.filter((r, idx, arr) => arr.findIndex((x) => x.id === r.id) === idx),
+    () =>
+      // Dòng TRÙNG Tag nội bộ gom xuống cuối để nhận diện + xóa (user chốt
+      // 2026-09-24). Chỉ đổi thứ tự hiển thị, không đụng dữ liệu/cảnh báo.
+      sortInventoryDupLast(
+        inventoryRows.filter((r, idx, arr) => arr.findIndex((x) => x.id === r.id) === idx),
+      ),
     [inventoryRows],
   );
 
@@ -130,7 +135,7 @@ export default function InventoryTable({
       setEditNotice('⚠️ Số lượng kiểm kê phải là một số hợp lệ (> 0).');
       return;
     }
-    const cleanBin = editBin.trim();
+    const cleanBin = editBin.trim().toUpperCase();
     if (!cleanBin) {
       setEditNotice('⚠️ Vui lòng nhập Vị trí (Bin) kiểm kê hợp lệ (không được để trống).');
       return;

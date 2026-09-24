@@ -36,7 +36,8 @@ export default function PdaScanPanel({ onScanned, onDuplicate, actorName }: PdaS
     const text = raw.trim();
     if (!text || busy) return;
     if (mode === 'location') {
-      setActiveBin(text);
+      // UPPER + TRIM BIN quét: b4 -> B4 (user chốt 2026-09-24).
+      setActiveBin(text.toUpperCase());
       setValue('');
       setNotice(null);
       setMode('tag'); // tự chuyển sang quét Tag sau khi quét Vị trí

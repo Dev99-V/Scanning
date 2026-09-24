@@ -34,12 +34,13 @@ export function useReferenceMap() {
         if (error || !data || data.length === 0) break;
         for (const r of data as ReferenceRow[]) {
           if (!r?.batch_id) continue;
-          // Trim BIN như import đã TRIM (Plan.md §1): giữ map tra cứu đồng nhất
-          // với RPC btrim, tránh "25 " vs "25" báo đỏ giả ở Bảng 1.
+          // TRIM + UPPER BIN (user chốt 2026-09-24: b4 = B4; DB lưu
+          // upper(btrim(bin)) từ migration 20260926). Giữ map tra cứu đồng
+          // nhất với RPC, tránh "b4" vs "B4" báo đỏ giả ở Bảng 1/Bảng 3.
           map.set(r.batch_id.trim(), {
             stock_code: r.stock_code,
             qty: r.qty,
-            bin: (r.bin ?? '').trim(),
+            bin: (r.bin ?? '').trim().toUpperCase(),
             tag_7055: Boolean(r.tag_7055),
           });
         }
@@ -66,7 +67,7 @@ export function useReferenceMap() {
 
   const updateBatchBin = useCallback((batchId: string, newBin: string) => {
     const cleanId = (batchId || '').trim();
-    const cleanBin = (newBin || '').trim();
+    const cleanBin = (newBin || '').trim().toUpperCase();
     setByBatch((prev) => {
       const next = new Map(prev);
       const cur = next.get(cleanId);
@@ -81,7 +82,7 @@ export function useReferenceMap() {
     const cleanId = (batchId || '').trim();
     setByBatch((prev) => {
       const next = new Map(prev);
-      next.set(cleanId, item);
+      next.set(cleanId, { ...item, bin: (item.bin ?? '').trim().toUpperCase() });
       return next;
     });
   }, []);
@@ -128,7 +129,7 @@ export function useReferenceMap() {
           next.set(cleanId, {
             stock_code: incoming.stock_code,
             qty: incoming.qty,
-            bin: (incoming.bin ?? '').trim(),
+            bin: (incoming.bin ?? '').trim().toUpperCase(),
             tag_7055: Boolean(incoming.tag_7055),
           });
           return next;

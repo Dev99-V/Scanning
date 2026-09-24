@@ -22,6 +22,13 @@ export interface InventoryComparison {
   warnings: string[];
 }
 
+/** Chuẩn hóa BIN để so sánh: TRIM + UPPER (user chốt 2026-09-24: b4 = B4).
+ * DB cũng lưu upper(btrim(bin)) từ migration 20260926; hàm này là lưới an
+ * toàn cho dòng cũ chưa backfill + input chưa chuẩn hóa. */
+export function normBin(v: string | null | undefined): string {
+  return (v || '').trim().toUpperCase();
+}
+
 /** Tổng hợp Bảng 1 theo Tag (dùng chung cho đối chiếu từng dòng + check-tag). */
 export interface Table1Agg {
   present: boolean;
@@ -34,7 +41,7 @@ export function aggregateTable1(matches: ScanRow[]): Table1Agg {
   return {
     present: true,
     qty: matches.reduce((sum, r) => sum + Number(r.qty || 0), 0),
-    bins: [...new Set(matches.map((r) => (r.bin || '').trim()).filter(Boolean))],
+    bins: [...new Set(matches.map((r) => normBin(r.bin)).filter(Boolean))],
   };
 }
 
@@ -51,7 +58,7 @@ export function inventoryWarnings(
     if (Number(row.qty) !== agg.qty) {
       warnings.push(`Lệch SL vs Bảng 1 (kiểm kê: ${row.qty} / Bảng 1: ${agg.qty})`);
     }
-    const kkBin = (row.bin || '').trim();
+    const kkBin = normBin(row.bin);
     if (kkBin && !agg.bins.includes(kkBin)) {
       warnings.push(`Lệch Bin vs Bảng 1 (kiểm kê: ${row.bin} / Bảng 1: ${agg.bins.join(', ') || '—'})`);
     }
@@ -63,7 +70,7 @@ export function inventoryWarnings(
     if (Number(row.qty) !== Number(sys.qty)) {
       warnings.push(`Lệch SL vs hệ thống (kiểm kê: ${row.qty} / HT: ${sys.qty})`);
     }
-    if ((row.bin || '').trim() !== (sys.bin || '').trim()) {
+    if (normBin(row.bin) !== normBin(sys.bin)) {
       warnings.push(`Lệch Bin vs hệ thống (kiểm kê: ${row.bin} / HT: ${sys.bin || '—'})`);
     }
   }
@@ -127,6 +134,27 @@ export function buildCheckedTagMap(
   return out;
 }
 
+/**
+ * Xếp dòng TRÙNG Tag nội bộ Bảng 3 xuống cuối bảng (user chốt 2026-09-24:
+ * gom trùng cũ xuống cuối để nhận diện + xóa, không thêm UI nặng).
+ * - Ổn định (stable): giữ nguyên thứ tự trong nhóm không-trùng và nhóm trùng.
+ * - Không đụng dữ liệu/highlight/cảnh báo: chỉ đổi thứ tự hiển thị.
+ */
+export function sortInventoryDupLast<T extends { batch_id: string }>(rows: T[]): T[] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const k = (r.batch_id || '').trim();
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const single: T[] = [];
+  const dup: T[] = [];
+  for (const r of rows) {
+    if ((counts.get((r.batch_id || '').trim()) || 0) > 1) dup.push(r);
+    else single.push(r);
+  }
+  return [...single, ...dup];
+}
+
 /** Mốc nguồn đã chốt cho 1 Tag tại thời điểm mở modal (để phát hiện nguồn vừa đổi). */
 export interface SourceBaseline {
   /** NaN = lúc chốt mốc Tag chưa có trong nguồn. */
@@ -158,13 +186,14 @@ export function detectSourceChange(
     return { changed: true, detail: `Nguồn xóa Tag này (trước: SL ${baseline.qty}, Bin ${baseline.bin || '—'})` };
   }
   const curQty = Number(sys.qty);
-  const curBin = (sys.bin || '').trim();
+  const curBin = normBin(sys.bin);
   if (!baseHad) {
     return { changed: true, detail: `Nguồn thêm mới Tag này (SL ${curQty}, Bin ${curBin || '—'})` };
   }
   const parts: string[] = [];
   if (curQty !== baseline.qty) parts.push(`SL ${baseline.qty}→${curQty}`);
-  if (curBin !== baseline.bin) parts.push(`Bin ${baseline.bin || '—'}→${curBin || '—'}`);
+  // So sánh BIN không phân biệt hoa/thường (b4 = B4 đã chuẩn hóa UPPER).
+  if (curBin !== normBin(baseline.bin)) parts.push(`Bin ${baseline.bin || '—'}→${curBin || '—'}`);
   if (parts.length === 0) return { changed: false, detail: null };
   return { changed: true, detail: `Nguồn vừa đổi: ${parts.join(', ')}` };
 }

@@ -89,7 +89,8 @@ export default function ReferenceAddCard({ existingRows, onAddSuccess, actorName
     const cleanBatch = batchId.trim();
     const cleanStock = stockCode.trim();
     const cleanWh = warehouse.trim();
-    const cleanBin = bin.trim();
+    // UPPER + TRIM BIN nguồn: b4 -> B4 (user chốt 2026-09-24).
+    const cleanBin = bin.trim().toUpperCase();
     const numQty = Number(qty);
 
     if (!cleanBatch) {

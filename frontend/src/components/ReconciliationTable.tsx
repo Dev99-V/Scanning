@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SystemNumbers } from '../hooks/useReferenceMap';
 import type { UsePresenceApi } from '../hooks/usePresence';
-import { table1RowKey } from '../hooks/presenceHelpers';
+import { table1RowKey, table2RowKey } from '../hooks/presenceHelpers';
 import { copyText } from '../lib/copyText';
 import { buildCheckedTagMap } from '../lib/inventoryCompare';
 import { smoothScrollToElementById } from '../lib/smoothScroll';
@@ -37,6 +37,10 @@ interface ReconciliationTableProps {
   onRowUpdated?: () => void;
   /** Bật/tắt nhãn 7055 ở Bảng 1 → App đồng bộ map tra cứu để Bảng 2 + badge cùng đổi tức thì. */
   onTag7055Updated?: (batchId: string, value: boolean) => void;
+  /** Sửa SL hệ thống ngay từ Bảng 1 → App đồng bộ map tra cứu (Bảng 2 + Bảng 3 đổi theo tức thì). */
+  onSystemQtyUpdated?: (batchId: string, qty: number) => void;
+  /** Sửa Bin hệ thống ngay từ Bảng 1 → App đồng bộ map tra cứu + refetch Bảng 1. */
+  onSystemBinUpdated?: (batchId: string, bin: string) => void;
   /** Presence realtime (khóa mềm theo dòng). Không bắt buộc để test cũ vẫn chạy. */
   presence?: UsePresenceApi | null;
   /** Tên hiển thị để ghi nhật ký hoạt động — optional để test cũ vẫn chạy. */
@@ -45,7 +49,7 @@ interface ReconciliationTableProps {
   inventoryRows?: InventoryRow[];
 }
 
-export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, onTag7055Updated, presence, actorName, inventoryRows = [] }: ReconciliationTableProps) {
+export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted, onRowUpdated, onTag7055Updated, onSystemQtyUpdated, onSystemBinUpdated, presence, actorName, inventoryRows = [] }: ReconciliationTableProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -104,6 +108,14 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
   const [isSavingTag, setIsSavingTag] = useState(false);
   const [editNotice, setEditNotice] = useState<string | null>(null);
 
+  // Khối B — DỮ LIỆU HỆ THỐNG (Bảng 2) sửa ngay từ Bảng 1: SL + Bin hệ thống
+  // của Tag gốc. Gọi đúng RPC Bảng 2 hiện có (đã tự tính lại status quét ở DB),
+  // rồi đẩy qua callback để App đồng bộ map tra cứu → Bảng 2 + Bảng 3 đổi theo.
+  const [editSysQty, setEditSysQty] = useState('');
+  const [editSysBin, setEditSysBin] = useState('');
+  const [isSavingSys, setIsSavingSys] = useState(false);
+  const [sysNotice, setSysNotice] = useState<string | null>(null);
+
   // Copy nhanh từng ô: TAG ID / SL quét / Bin quét (chỉ copy đúng 1 giá trị của ô đó).
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const copyTimer = useRef<number | undefined>(undefined);
@@ -139,7 +151,11 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
     const cleanBatch = (r.batch_id || '').trim();
     const sys = systemByBatch.get(cleanBatch);
     setManualStockCode(r.stock_code ?? sys?.stock_code ?? '');
+    // Prefill Khối B theo Tag gốc (số hệ thống thuộc về Tag, không đổi theo ô Tag mới).
+    setEditSysQty(sys ? String(sys.qty) : '');
+    setEditSysBin(sys?.bin ?? '');
     setEditNotice(null);
+    setSysNotice(null);
   }
 
   async function handleConfirmEdit(e?: React.FormEvent) {
@@ -155,7 +171,7 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
       setEditNotice('⚠️ Số lượng quét phải là một số không âm hợp lệ.');
       return;
     }
-    const cleanBin = editBin.trim();
+    const cleanBin = editBin.trim().toUpperCase();
     if (!cleanBin) {
       setEditNotice('⚠️ Vui lòng nhập Vị trí (Bin) quét hợp lệ (không được để trống).');
       return;
@@ -195,7 +211,77 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
 
   function closeEditModal() {
     setEditingRow(null);
+    setSysNotice(null);
     presence?.clearEditing();
+  }
+
+  // Lưu KHỐI B — Dữ liệu hệ thống (Bảng 2) ngay từ Bảng 1. Chỉ gọi RPC cho
+  // trường thật sự đổi; RPC Bảng 2 đã tự tính lại status các dòng quét liên
+  // quan ở DB, App refetch + map tra cứu đổi → Bảng 2/Bảng 3 đồng bộ theo.
+  async function handleSaveSystem() {
+    if (!editingRow || isSavingSys) return;
+    const sysBatch = (editingRow.batch_id || '').trim();
+    const sys = systemByBatch.get(sysBatch);
+    if (!sys) {
+      setSysNotice('⚠️ Tag này chưa có trong nguồn — hãy thêm dòng nguồn ở Bảng 2 trước.');
+      return;
+    }
+    const holder = presence?.getLock('table2', table2RowKey(sysBatch));
+    if (holder) {
+      setSysNotice(`🔒 ${holder.name} đang sửa dòng nguồn này ở Bảng 2 — vui lòng chờ cập nhật mới.`);
+      return;
+    }
+    const newSysQty = Number(editSysQty.trim());
+    if (!Number.isFinite(newSysQty) || newSysQty < 0) {
+      setSysNotice('⚠️ SL hệ thống phải là một số không âm hợp lệ.');
+      return;
+    }
+    // UPPER + TRIM BIN hệ thống: b4 -> B4 (chuẩn 2026-09-24).
+    const newSysBin = editSysBin.trim().toUpperCase();
+    if (!newSysBin) {
+      setSysNotice('⚠️ Vui lòng nhập Bin hệ thống hợp lệ (không được để trống).');
+      return;
+    }
+    const qtyChanged = newSysQty !== Number(sys.qty);
+    const binChanged = newSysBin !== (sys.bin || '').trim().toUpperCase();
+    if (!qtyChanged && !binChanged) {
+      setSysNotice('Không có thay đổi nào ở dữ liệu hệ thống.');
+      return;
+    }
+    setIsSavingSys(true);
+    setSysNotice(null);
+    try {
+      if (qtyChanged) {
+        const { data, error } = await supabase.rpc('update_reference_qty', {
+          p_batch_id: sysBatch,
+          p_new_qty: newSysQty,
+          ...(actorName ? { p_actor_name: actorName } : {}),
+        });
+        if (error || (data as { ok?: unknown } | null)?.ok !== true) {
+          setSysNotice(`❌ Lỗi lưu SL hệ thống: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
+          return;
+        }
+        onSystemQtyUpdated?.(sysBatch, newSysQty);
+      }
+      if (binChanged) {
+        const { data, error } = await supabase.rpc('update_reference_bin', {
+          p_batch_id: sysBatch,
+          p_new_bin: newSysBin,
+          ...(actorName ? { p_actor_name: actorName } : {}),
+        });
+        if (error || (data as { ok?: unknown } | null)?.ok !== true) {
+          setSysNotice(`❌ Lỗi lưu Bin hệ thống: ${error?.message || (data as { error?: unknown } | null)?.error || 'Không xác định'}`);
+          return;
+        }
+        onSystemBinUpdated?.(sysBatch, newSysBin);
+      }
+      setSysNotice('✅ Đã lưu dữ liệu hệ thống — Bảng 1/2/3 đã đồng bộ.');
+      onRowUpdated?.();
+    } catch (err) {
+      setSysNotice(`❌ Lỗi kết nối: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsSavingSys(false);
+    }
   }
 
   function openDeleteModal(r: ScanRow) {
@@ -427,11 +513,12 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
             {displayedRows.map((r) => {
               const cleanBatch = (r.batch_id || '').trim();
               const sys = systemByBatch.get(cleanBatch);
-              // Live-compare với nguồn HIỆN TẠI (pipeline.md §5): trim BIN 2 đầu
-              // trước khi so (đồng nhất với import TRIM + RPC btrim), nếu không
-              // "25 " vs "25" báo đỏ giả trong khi DB coi là khớp.
-              const sysBin = (sys?.bin ?? '').trim();
-              const scanBin = (r.bin ?? '').trim();
+              // Live-compare với nguồn HIỆN TẠI (pipeline.md §5): TRIM + UPPER
+              // BIN 2 đầu trước khi so (b4 = B4, user chốt 2026-09-24; DB lưu
+              // upper từ migration 20260926), nếu không "25 " vs "25" hay
+              // "b4" vs "B4" báo đỏ giả trong khi DB coi là khớp.
+              const sysBin = (sys?.bin ?? '').trim().toUpperCase();
+              const scanBin = (r.bin ?? '').trim().toUpperCase();
               const isMissingSys = !sys;
               const isQtyDiff = !!sys && Number(sys.qty) !== Number(r.qty);
               const isBinDiff = !!sys && sysBin !== scanBin;
@@ -897,6 +984,10 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                 </div>
               </div>
 
+              {/* KHỐI A — DỮ LIỆU QUÉT (Bảng 1): tách rõ với Khối B hệ thống bên dưới */}
+              <p className="rounded-lg border border-cyan-500/30 bg-cyan-950/40 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300">
+                Khối A — Dữ liệu quét (Bảng 1)
+              </p>
               {/* Hàng nhập Tag ID, Số lượng và Vị trí quét mới */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Ô nhập Tag ID mới */}
@@ -1002,6 +1093,76 @@ export default function ReconciliationTable({ rows, systemByBatch, onRowDeleted,
                   {editNotice}
                 </p>
               )}
+
+              {/* KHỐI B — DỮ LIỆU HỆ THỐNG (Bảng 2): sửa SL/Bin nguồn ngay từ
+                  Bảng 1, khỏi lướt xuống Bảng 2. Khối riêng, nút lưu riêng;
+                  lưu xong App đồng bộ map tra cứu → Bảng 2 + Bảng 3 đổi theo. */}
+              {(() => {
+                const sysBatch = (editingRow.batch_id || '').trim();
+                const sysOfRow = systemByBatch.get(sysBatch);
+                return (
+                  <div className="space-y-3 rounded-2xl border border-amber-500/40 bg-amber-950/20 p-3.5">
+                    <p className="rounded-lg border border-amber-500/30 bg-amber-950/40 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-300">
+                      Khối B — Dữ liệu hệ thống (Bảng 2) · Tag {sysBatch}
+                    </p>
+                    {!sysOfRow ? (
+                      <p className="text-[11px] text-slate-400">
+                        Tag này chưa có trong nguồn — hãy thêm dòng nguồn ở Bảng 2 trước khi sửa số hệ thống.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label htmlFor="edit-sys-qty-input" className="block text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">
+                            SL hệ thống:
+                          </label>
+                          <input
+                            id="edit-sys-qty-input"
+                            aria-label="SL hệ thống mới"
+                            type="number"
+                            min={0}
+                            step="any"
+                            value={editSysQty}
+                            disabled={isSavingSys}
+                            onChange={(e) => setEditSysQty(e.target.value)}
+                            placeholder="Nhập SL hệ thống..."
+                            className="w-full rounded-xl border border-amber-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold text-amber-300 placeholder:text-slate-600 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="edit-sys-bin-input" className="block text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">
+                            Bin hệ thống:
+                          </label>
+                          <input
+                            id="edit-sys-bin-input"
+                            aria-label="Bin hệ thống mới"
+                            type="text"
+                            value={editSysBin}
+                            disabled={isSavingSys}
+                            onChange={(e) => setEditSysBin(e.target.value)}
+                            placeholder="Nhập Bin hệ thống..."
+                            className="w-full rounded-xl border border-amber-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold uppercase text-amber-300 placeholder:text-slate-600 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {sysNotice && (
+                      <p role="alert" className="rounded-xl border border-amber-500/40 bg-black/50 p-2.5 text-xs text-amber-200">
+                        {sysNotice}
+                      </p>
+                    )}
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={isSavingSys || !sysOfRow}
+                        onClick={() => void handleSaveSystem()}
+                        className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-amber-900/50 hover:opacity-90 active:scale-95 transition disabled:opacity-50"
+                      >
+                        {isSavingSys ? 'Đang lưu hệ thống...' : '💾 Lưu dữ liệu hệ thống'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-3 justify-end pt-2">
                 <button

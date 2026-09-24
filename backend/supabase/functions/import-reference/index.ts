@@ -157,7 +157,9 @@ serve(async (req: Request) => {
       stock_code: rawStock.trim(),
       stock_code_raw: rawStock,
       warehouse: asText(warehouse)?.trim() ?? "",
-      bin: rawBin.trim(),
+      // UPPER + TRIM mọi tầng ở cột BIN (user chốt 2026-09-24): b4 -> B4.
+      // bin_raw giữ nguyên bản gốc để audit (Plan.md §1).
+      bin: rawBin.trim().toUpperCase(),
       bin_raw: rawBin,
       qty: qtyNum,
       create_date: createIso,

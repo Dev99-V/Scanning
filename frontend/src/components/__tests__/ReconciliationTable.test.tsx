@@ -383,5 +383,82 @@ describe('ReconciliationTable', () => {
     );
     expect(screen.getByTestId('toggle-7055-r-t2')).toBeDisabled();
   });
+
+  it('modal sửa Bảng 1 có 2 khối tách rõ: Khối A quét + Khối B hệ thống', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-sys', batch_id: 'SYS01', qty: 5, bin: 'B1' })]}
+        systemByBatch={new Map([['SYS01', { stock_code: 'S1', qty: 8, bin: 'B9' }]])}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Bấm để chỉnh sửa vị trí quét'));
+    expect(screen.getByText(/Khối A — Dữ liệu quét \(Bảng 1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Khối B — Dữ liệu hệ thống \(Bảng 2\)/)).toBeInTheDocument();
+    // Prefill đúng số hệ thống của Tag gốc
+    expect(screen.getByLabelText('SL hệ thống mới')).toHaveValue(8);
+    expect(screen.getByLabelText('Bin hệ thống mới')).toHaveValue('B9');
+  });
+
+  it('Khối B: đổi SL + Bin hệ thống → gọi đúng RPC Bảng 2 (Bin UPPER) + callback đồng bộ', async () => {
+    const onSystemQtyUpdated = vi.fn();
+    const onSystemBinUpdated = vi.fn();
+    const onRowUpdated = vi.fn();
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-sys2', batch_id: 'SYS02', qty: 5, bin: 'B1' })]}
+        systemByBatch={new Map([['SYS02', { stock_code: 'S1', qty: 8, bin: 'B9' }]])}
+        onSystemQtyUpdated={onSystemQtyUpdated}
+        onSystemBinUpdated={onSystemBinUpdated}
+        onRowUpdated={onRowUpdated}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Bấm để chỉnh sửa vị trí quét'));
+    fireEvent.change(screen.getByLabelText('SL hệ thống mới'), { target: { value: '12' } });
+    fireEvent.change(screen.getByLabelText('Bin hệ thống mới'), { target: { value: 'b4' } });
+    fireEvent.click(screen.getByText('💾 Lưu dữ liệu hệ thống'));
+
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('update_reference_qty', {
+        p_batch_id: 'SYS02',
+        p_new_qty: 12,
+      });
+    });
+    await waitFor(() => {
+      expect(rpc).toHaveBeenCalledWith('update_reference_bin', {
+        p_batch_id: 'SYS02',
+        p_new_bin: 'B4',
+      });
+    });
+    expect(onSystemQtyUpdated).toHaveBeenCalledWith('SYS02', 12);
+    expect(onSystemBinUpdated).toHaveBeenCalledWith('SYS02', 'B4');
+    expect(onRowUpdated).toHaveBeenCalled();
+    expect(await screen.findByText(/Đã lưu dữ liệu hệ thống/)).toBeInTheDocument();
+  });
+
+  it('Khối B: không đổi gì → không gọi RPC, báo không có thay đổi', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-sys3', batch_id: 'SYS03', qty: 5, bin: 'B1' })]}
+        systemByBatch={new Map([['SYS03', { stock_code: 'S1', qty: 8, bin: 'B9' }]])}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Bấm để chỉnh sửa vị trí quét'));
+    fireEvent.click(screen.getByText('💾 Lưu dữ liệu hệ thống'));
+    expect(screen.getByRole('alert')).toHaveTextContent(/Không có thay đổi/);
+    expect(rpc).not.toHaveBeenCalledWith('update_reference_qty', expect.anything());
+    expect(rpc).not.toHaveBeenCalledWith('update_reference_bin', expect.anything());
+  });
+
+  it('Khối B: Tag ngoài nguồn → nút lưu hệ thống bị khóa + hướng dẫn sang Bảng 2', () => {
+    render(
+      <ReconciliationTable
+        rows={[row({ id: 'r-sys4', batch_id: 'NOSYS04', qty: 5, bin: 'B1', status: 'not_in_reference' })]}
+        systemByBatch={new Map()}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Bấm để chỉnh sửa vị trí quét'));
+    expect(screen.getByText(/chưa có trong nguồn/)).toBeInTheDocument();
+    expect(screen.getByText('💾 Lưu dữ liệu hệ thống')).toBeDisabled();
+  });
 });
 

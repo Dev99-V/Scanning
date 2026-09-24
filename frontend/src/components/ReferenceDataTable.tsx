@@ -287,7 +287,8 @@ export default function ReferenceDataTable({
 
   async function handleSaveBin() {
     if (!editingBinRow) return;
-    const cleanBin = editBinInput.trim();
+    // UPPER + TRIM BIN nguồn: b4 -> B4 (user chốt 2026-09-24).
+    const cleanBin = editBinInput.trim().toUpperCase();
     if (!cleanBin) {
       setEditBinError('Vị trí (Bin) không được để trống');
       return;
@@ -434,7 +435,7 @@ export default function ReferenceDataTable({
     setQuickNotice(
       action === 'append'
         ? 'Đã chọn: GHI THÊM bản ghi mới. Bấm Xác nhận để nhập kho.'
-        : `Đã chọn: ĐỔI VỊ TRÍ sang "${quickBin.trim()}". Bấm Xác nhận để nhập kho.`,
+        : `Đã chọn: ĐỔI VỊ TRÍ sang "${quickBin.trim().toUpperCase()}". Bấm Xác nhận để nhập kho.`,
     );
   }
 
@@ -448,7 +449,8 @@ export default function ReferenceDataTable({
       return;
     }
     const batchId = (quickRow.batch_id || '').trim();
-    const binVal = quickBin.trim();
+    // UPPER + TRIM BIN quét nhanh: b4 -> B4 (user chốt 2026-09-24).
+    const binVal = quickBin.trim().toUpperCase();
     const qtyVal = Number(quickQty.trim());
     if (!batchId) {
       setQuickNotice('⚠️ Tag ID không hợp lệ.');

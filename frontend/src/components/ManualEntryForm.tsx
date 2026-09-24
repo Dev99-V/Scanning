@@ -20,7 +20,8 @@ export default function ManualEntryForm({ onScanned, onDuplicate, actorName }: M
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const b = batchId.trim();
-    const bn = bin.trim();
+    // UPPER + TRIM BIN: b4 -> B4 (user chốt 2026-09-24).
+    const bn = bin.trim().toUpperCase();
     if (!b || !bn || busy) {
       if (!b || !bn) setNotice('Nhập đủ Tag ID và Vị trí.');
       return;

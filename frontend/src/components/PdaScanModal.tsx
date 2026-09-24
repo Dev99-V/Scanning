@@ -75,10 +75,10 @@ export default function PdaScanModal({
 
   if (!isOpen) return null;
 
-  // Bước 1: Quét hoặc nhập Bin
+  // Bước 1: Quét hoặc nhập Bin (UPPER + TRIM: b4 -> B4, user chốt 2026-09-24)
   function handleBinSubmit(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    const val = binInput.trim();
+    const val = binInput.trim().toUpperCase();
     if (!val) return;
     setActiveBin(val);
     setBinInput('');

@@ -150,6 +150,99 @@ describe('InventoryScanModal', () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it('TAG đã có trong Bảng 3 → CHẶN CỨNG, không gọi RPC, báo không được ghi trùng', async () => {
+    const onChanged = vi.fn();
+    render(
+      <InventoryScanModal
+        isOpen={true}
+        onClose={() => {}}
+        inventoryRows={invRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys10}
+        onChanged={onChanged}
+      />,
+    );
+
+    const binInput = screen.getByPlaceholderText('READY TO SCAN BIN...');
+    fireEvent.change(binInput, { target: { value: 'BIN_A' } });
+    fireEvent.submit(binInput.closest('form')!);
+
+    const tagInput = await screen.findByPlaceholderText('SCAN TAG ID (ENTER)...');
+    fireEvent.change(tagInput, { target: { value: 'TAG1' } });
+    fireEvent.keyDown(tagInput, { key: 'Enter', code: 'Enter' });
+    // Cảnh báo chặn trùng hiện ngay ở bước kiểm tra Tag
+    expect(await screen.findByText(/KHÔNG được ghi trùng/)).toBeInTheDocument();
+
+    const qtyInput = await screen.findByPlaceholderText('NHẬP SỐ LƯỢNG...');
+    fireEvent.change(qtyInput, { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /LƯU LƯỢT KIỂM KÊ/i }));
+
+    // Không gọi RPC submit, không refetch, báo chặn
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Đã chặn lưu trùng: Tag TAG1/)).toBeInTheDocument();
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it("RPC trả duplicate_batch_id (2 máy race) → báo chặn, không báo 'Đã lưu'", async () => {
+    mockRpc.mockResolvedValueOnce({ data: { ok: false, error: 'duplicate_batch_id' }, error: null });
+    render(
+      <InventoryScanModal
+        isOpen={true}
+        onClose={() => {}}
+        inventoryRows={[]}
+        scannedRows={scannedRows}
+        systemByBatch={sys10}
+      />,
+    );
+    const binInput = screen.getByPlaceholderText('READY TO SCAN BIN...');
+    fireEvent.change(binInput, { target: { value: 'BIN_A' } });
+    fireEvent.submit(binInput.closest('form')!);
+
+    const tagInput = await screen.findByPlaceholderText('SCAN TAG ID (ENTER)...');
+    fireEvent.change(tagInput, { target: { value: 'TAG1' } });
+    fireEvent.keyDown(tagInput, { key: 'Enter', code: 'Enter' });
+    const qtyInput = await screen.findByPlaceholderText('NHẬP SỐ LƯỢNG...');
+    fireEvent.change(qtyInput, { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /LƯU LƯỢT KIỂM KÊ/i }));
+
+    expect(await screen.findByText(/Đã chặn lưu trùng: Tag TAG1/)).toBeInTheDocument();
+    expect(screen.queryByText(/Đã lưu kiểm kê/)).not.toBeInTheDocument();
+  });
+
+  it('BIN nhập thường b4 → tự UPPER thành B4 khi lưu', async () => {
+    render(
+      <InventoryScanModal
+        isOpen={true}
+        onClose={() => {}}
+        inventoryRows={[]}
+        scannedRows={[]}
+        systemByBatch={new Map()}
+      />,
+    );
+    const binInput = screen.getByPlaceholderText('READY TO SCAN BIN...');
+    fireEvent.change(binInput, { target: { value: 'b4' } });
+    fireEvent.submit(binInput.closest('form')!);
+
+    expect(await screen.findByTestId('inventory-active-bin')).toHaveTextContent('B4');
+
+    const tagInput = await screen.findByPlaceholderText('SCAN TAG ID (ENTER)...');
+    fireEvent.change(tagInput, { target: { value: 'NEWTAG' } });
+    fireEvent.keyDown(tagInput, { key: 'Enter', code: 'Enter' });
+    // Tag ngoài nguồn → điền Stock Code tay
+    fireEvent.change(await screen.findByPlaceholderText('NHẬP STOCK CODE...'), { target: { value: 'ST_NEW' } });
+    fireEvent.change(await screen.findByPlaceholderText('NHẬP SỐ LƯỢNG...'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: /LƯU LƯỢT KIỂM KÊ/i }));
+
+    await screen.findByText(/Đã lưu kiểm kê: NEWTAG/);
+    expect(mockRpc).toHaveBeenCalledWith('submit_inventory_count', {
+      p_batch_id: 'NEWTAG',
+      p_stock_code: 'ST_NEW',
+      p_qty: 3,
+      p_bin: 'B4',
+      p_is_manual: false,
+    });
+  });
+
   it('xóa dòng kiểm kê qua modal lồng (không window.confirm)', async () => {
     const onChanged = vi.fn();
     const confirmSpy = vi.spyOn(window, 'confirm');

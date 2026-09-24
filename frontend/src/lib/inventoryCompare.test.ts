@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCheckedTagMap, compareInventoryRow, detectSourceChange } from './inventoryCompare';
+import { buildCheckedTagMap, compareInventoryRow, detectSourceChange, normBin, sortInventoryDupLast } from './inventoryCompare';
 import type { InventoryRow, ScanRow } from './types';
 
 function invRow(over: Partial<InventoryRow> = {}): InventoryRow {
@@ -143,5 +143,73 @@ describe('buildCheckedTagMap', () => {
   it('một dòng KK lệch trong nhiều dòng cùng Tag → cả Tag false', () => {
     const m = buildCheckedTagMap([inv('OK_TAG', 10), { ...inv('OK_TAG', 3), id: 'inv-x' }], scanned, sys);
     expect(m.get('OK_TAG')).toBe(false);
+  });
+});
+
+describe('normBin + so sánh không phân biệt hoa/thường (b4 = B4)', () => {
+  const scanned: ScanRow[] = [
+    {
+      id: 's1',
+      batch_id: 'TAG1',
+      qty: 10,
+      bin: 'B4',
+      stock_code: 'ST_A',
+      status: 'ok',
+      resolution: null,
+      is_manual: false,
+      scanned_at: '2026-09-21T00:00:00Z',
+    },
+  ];
+  const sys = new Map([['TAG1', { stock_code: 'ST_A', qty: 10, bin: 'B4' }]]);
+
+  it('normBin trim + upper', () => {
+    expect(normBin('  b4 ')).toBe('B4');
+    expect(normBin(null)).toBe('');
+    expect(normBin('Bin-12a')).toBe('BIN-12A');
+  });
+
+  it('KK nhập b4 vs nguồn B4 → khớp, không cảnh báo lệch Bin', () => {
+    const cmp = compareInventoryRow(invRow({ bin: 'b4' }), scanned, sys);
+    expect(cmp.allMatch).toBe(true);
+    expect(cmp.warnings).toEqual([]);
+  });
+
+  it('KK nhập b4 vs Bảng 1 quét B4 → khớp Bin Bảng 1', () => {
+    const cmp = compareInventoryRow(
+      invRow({ bin: 'b4' }),
+      [{ ...scanned[0], bin: '  b4 ' }],
+      new Map([['TAG1', { stock_code: 'ST_A', qty: 10, bin: 'B4' }]]),
+    );
+    expect(cmp.warnings.join(' ')).not.toContain('Lệch Bin');
+  });
+
+  it('mốc b4 vs nguồn B4 → không gắn cờ nguồn vừa đổi', () => {
+    const r = detectSourceChange({ qty: 10, bin: 'b4' }, { stock_code: 'ST', qty: 10, bin: 'B4' });
+    expect(r).toEqual({ changed: false, detail: null });
+  });
+});
+
+describe('sortInventoryDupLast', () => {
+  function row(id: string, tag: string): InventoryRow {
+    return {
+      id,
+      batch_id: tag,
+      stock_code: 'ST',
+      qty: 1,
+      bin: 'B1',
+      is_manual: false,
+      scanned_at: '2026-09-21T00:00:00Z',
+    };
+  }
+
+  it('dòng trùng Tag gom xuống cuối, giữ thứ tự ổn định, không mất dòng', () => {
+    const rows = [row('d1', 'DUP'), row('s1', 'SINGLE'), row('d2', 'DUP'), row('s2', 'SINGLE2')];
+    const out = sortInventoryDupLast(rows);
+    expect(out.map((r) => r.id)).toEqual(['s1', 's2', 'd1', 'd2']);
+  });
+
+  it('không có trùng → giữ nguyên thứ tự', () => {
+    const rows = [row('a', 'A'), row('b', 'B')];
+    expect(sortInventoryDupLast(rows).map((r) => r.id)).toEqual(['a', 'b']);
   });
 });
