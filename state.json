@@ -171,8 +171,8 @@
     },
     {
       "type": "rpc_inventory_block_duplicate_upper_bin",
-      "detail": "User chốt 2026-09-24 (Bảng 3): (1) CHẶN CỨNG trùng TAG ở modal Quét Kiểm Kê — submit_inventory_count trả duplicate_batch_id (kèm advisory lock inventory_submit: chống race 2 máy), frontend chặn ở UI + rẽ nhánh error.code, không ghi dòng mới; trùng cũ gom xuống cuối bảng (sortInventoryDupLast, không thêm UI); (2) UPPER+TRIM BIN mọi tầng — RPC submit/update inventory + recompute so sánh upper + backfill upper 3 bảng (raw giữ nguyên), Edge import-reference bin upper, frontend mọi ô Bin quét/sửa upper trước khi gửi + compare case-insensitive; (3) Đồng bộ sau nạp nguồn giữ nguyên cơ chế hiện có (App refetchReference sau import + mốc baseline/viền vàng trong modal), warnings live-compare luôn theo nguồn mới. Migration 20260926090000_inventory_block_duplicate_upper_bin.sql + gate qc_inventory.sh mở rộng 7→9 checks. Cần supabase db push + functions deploy import-reference lên cloud (CI backend-deploy khi merge main).",
-      "status": "implementing_2026_09_24",
+      "detail": "User chốt 2026-09-24 (Bảng 3): (1) CHẶN CỨNG trùng TAG ở modal Quét Kiểm Kê — submit_inventory_count trả duplicate_batch_id (kèm advisory lock inventory_submit: chống race 2 máy), frontend chặn ở UI + rẽ nhánh error.code, không ghi dòng mới; trùng cũ gom xuống cuối bảng (sortInventoryDupLast, không thêm UI); (2) UPPER+TRIM BIN mọi tầng — RPC submit/update inventory + recompute so sánh upper + backfill upper 3 bảng (raw giữ nguyên), Edge import-reference bin upper, frontend mọi ô Bin quét/sửa upper trước khi gửi + compare case-insensitive; (3) Đồng bộ sau nạp nguồn giữ nguyên cơ chế hiện có (App refetchReference sau import + mốc baseline/viền vàng trong modal), warnings live-compare luôn theo nguồn mới. Migration 20260926090000_inventory_block_duplicate_upper_bin.sql + gate qc_inventory.sh mở rộng 7→9 checks. ĐÃ APPLY cloud 2026-09-24 (CI backend-deploy run 35978111443: gates Phase 1/2/3 + inventory 9 checks PASS, db push + functions deploy import-reference success).",
+      "status": "applied_2026_09_24",
       "date": "2026-09-24"
     },
     {
