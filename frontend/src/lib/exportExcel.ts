@@ -264,3 +264,94 @@ export function downloadAuditExcel(entries: AuditEntry[]): void {
   XLSX.writeFile(wb, `NhatKyHoatDong_${Date.now()}.xlsx`);
 }
 
+// ---- Bảng 2: xuất 2 sheet (sheet 1 = đã khớp, sheet 2 = dữ liệu dư) ----
+export const REFERENCE_SPLIT_HEADER = [
+  'Stock Code',
+  'Tag ID',
+  'Kho',
+  'Bin',
+  'Số lượng',
+  'Ngày tạo',
+  'Trạng thái',
+];
+
+export interface ReferenceSplitItem {
+  batch_id: string;
+  stock_code: string;
+  warehouse: string;
+  bin: string;
+  qty: number;
+  create_date?: string | null;
+}
+
+function formatViDate(dStr?: string | null): string {
+  if (!dStr) return '';
+  try {
+    const d = new Date(dStr);
+    if (isNaN(d.getTime())) return String(dStr);
+    return d.toLocaleDateString('vi-VN');
+  } catch {
+    return String(dStr);
+  }
+}
+
+function referenceSplitRowCells(
+  r: ReferenceSplitItem,
+  statusLabel: string,
+): { v: string; t: 's'; z: '@' }[] {
+  return [
+    textCell(r.stock_code ?? ''),
+    textCell(r.batch_id),
+    textCell(r.warehouse ?? ''),
+    textCell(r.bin ?? ''),
+    textCell(r.qty),
+    textCell(formatViDate(r.create_date)),
+    textCell(statusLabel),
+  ];
+}
+
+function aoaToTextSheet(data: unknown[][]): XLSX.WorkSheet {
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1');
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    for (let R = range.s.r + 1; R <= range.e.r; R++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c });
+      const cell = ws[addr] as { z?: string } | undefined;
+      if (cell && typeof cell === 'object') cell.z = '@';
+      else ws[addr] = { v: '', t: 's', z: '@' };
+    }
+  }
+  return ws;
+}
+
+export const REFERENCE_SPLIT_SHEET_MATCHED = '🔍 Da khop';
+export const REFERENCE_SPLIT_SHEET_EXCESS = '📦 Du lieu du';
+
+export function buildReferenceSplitWorkbook(
+  matchedRows: ReferenceSplitItem[],
+  excessRows: ReferenceSplitItem[],
+): XLSX.WorkBook {
+  const wb = XLSX.utils.book_new();
+  const matchedData: unknown[][] = [REFERENCE_SPLIT_HEADER];
+  for (const r of matchedRows) {
+    if (!r?.batch_id) continue;
+    matchedData.push(referenceSplitRowCells(r, 'ĐÃ KHỚP'));
+  }
+  const excessData: unknown[][] = [REFERENCE_SPLIT_HEADER];
+  for (const r of excessRows) {
+    if (!r?.batch_id) continue;
+    excessData.push(referenceSplitRowCells(r, 'Dữ liệu dư (chưa quét)'));
+  }
+  XLSX.utils.book_append_sheet(wb, aoaToTextSheet(matchedData), REFERENCE_SPLIT_SHEET_MATCHED);
+  XLSX.utils.book_append_sheet(wb, aoaToTextSheet(excessData), REFERENCE_SPLIT_SHEET_EXCESS);
+  return wb;
+}
+
+export function downloadReferenceSplitExcel(
+  matchedRows: ReferenceSplitItem[],
+  excessRows: ReferenceSplitItem[],
+): void {
+  const wb = buildReferenceSplitWorkbook(matchedRows, excessRows);
+  XLSX.writeFile(wb, `Bang2_Khop_Du_${Date.now()}.xlsx`);
+}
+

@@ -8,6 +8,7 @@ import { table2RowKey } from '../hooks/presenceHelpers';
 import { resilientSubscribe } from '../lib/realtime';
 import { smoothScrollToElementById } from '../lib/smoothScroll';
 import { resolveDuplicate, submitScan } from '../lib/scanApi';
+import { downloadReferenceSplitExcel } from '../lib/exportExcel';
 import { supabase } from '../lib/supabase';
 import type { ScanRow } from '../lib/types';
 import ActivityLogCard from './ActivityLogCard';
@@ -1320,6 +1321,22 @@ export default function ReferenceDataTable({
                     Cuộn xuống hoặc bấm tải tiếp(còn {(filteredRows.length - visibleCount).toLocaleString()} dòng)
                   </button>
                 )}
+                <button
+                  type="button"
+                  disabled={rows.length === 0}
+                  onClick={() =>
+                    downloadReferenceSplitExcel(
+                      rows.filter((r) => isRowMatched(r)),
+                      rows.filter((r) => isRowUnhighlighted(r)),
+                    )
+                  }
+                  title="Xuất Excel 2 sheet: sheet 1 các dòng đã khớp Bảng 1, sheet 2 các dòng dữ liệu dư"
+                  aria-label="Xuất Excel Bảng 2 2 sheet khớp và dư"
+                  data-testid="btn-export-table2-split"
+                  className="rounded-xl border border-emerald-500/40 bg-emerald-950/60 px-3 py-1.5 font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-900 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  📥 EXPORT XLSX 2 SHEET (🔍 {matchedCount.toLocaleString()} + 📦 {excessCount.toLocaleString()})
+                </button>
                 <button
                   type="button"
                   onClick={() => smoothScrollToElementById('bang-1')}
