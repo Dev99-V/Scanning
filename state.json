@@ -196,7 +196,7 @@
     {
       "type": "frontend_only_parallel_paged_fetch",
       "detail": "User báo reload chờ lâu (2026-09-27): mỗi reload tải full 4 bảng, mỗi bảng đi từng trang 1000 NỐI TIẾP (Bảng nguồn còn tải 2 lần: map + Bảng 2 riêng). Fix chỉ frontend: mới lib/pagedFetch.ts (fetchAllPages — tải các trang theo sóng 4 song song, giữ nguyên thứ tự trang + ORDER BY ổn định + khử trùng PK ở caller như cũ, tương thích mock test cũ) + chuyển 4 loader sang dùng (useScannedData, useReferenceMap, ReferenceDataTable.load, useInventoryCounts). Render 100 dòng + cuộn vô hạn đã có sẵn ở cả 3 bảng nên không đụng. Không đổi contract backend, không cache localStorage.",
-      "status": "implemented_2026_09_27_pending_push",
+      "status": "deployed_2026_09_27_ci_36308430783_success",
       "date": "2026-09-27"
     }
   ],
