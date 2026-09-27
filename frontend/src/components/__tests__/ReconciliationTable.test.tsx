@@ -238,7 +238,9 @@ describe('ReconciliationTable', () => {
       p_new_qty: 5,
       p_new_bin: 'BIN_NEW',
     });
-    expect(screen.getByRole('alert')).toHaveTextContent(/Lỗi cập nhật: boom/);
+    // Alert render sau `await rpc(...)` + setState: phải chờ, không assert đồng bộ
+    // (flaky trên CI runner chậm — run 36308309142 rớt đúng dòng này dù local xanh).
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Lỗi cập nhật: boom/));
   });
 
   it('bấm trực tiếp vào chữ Tag ID cũng mở modal chỉnh sửa', () => {

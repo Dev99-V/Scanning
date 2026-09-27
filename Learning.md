@@ -692,3 +692,13 @@
 - **Bằng chứng đã hết lỗi**: `tsc -b` exit 0; `oxlint` sạch; `vitest` 41 files/222 tests PASS (mới `pagedFetch.test.ts` 5 tests: song song + giữ thứ tự + dừng trang ngắn + lan lỗi + trần an toàn; test phân trang 1050 dòng cũ vẫn xanh); `vite build` OK.
 - **Cách phòng tránh lần sau**: mọi vòng lặp `.range()` mới bắt buộc đi qua `fetchAllPages` (sóng song song), không viết while-nối-tiếp; mock test phân trang phải dispatch theo `from` để tương thích sóng song song.
 - **Liên quan**: bài học OFFSET 2026-09-09 (sort ổn định + khử trùng PK giữ nguyên); `state.json:pending_contract_changes(frontend_only_parallel_paged_fetch)`.
+
+### [2026-09-27] CI rớt test ReconciliationTable "lỗi RPC hiện alert" dù local xanh (assert đồng bộ sau await rpc)
+
+- **Khu vực**: `frontend/src/components/__tests__/ReconciliationTable.test.tsx` (test-only, không đụng production).
+- **Triệu chứng**: push f1ba7ff, CI frontend-deploy run 36308309142 FAIL ở `npm test`: `Unable to find role="alert"` tại test `lỗi RPC thì gọi đúng 1 lần...`; local `vitest` 41 files/222 tests PASS.
+- **Nguyên nhân gốc**: test `await waitFor(rpc called once)` rồi assert `getByRole('alert')` ĐỒNG BỘ. Nhưng alert chỉ render sau `await rpc(...)` + `setEditNotice` trong handler async — `waitFor` resolve ngay khi mock được gọi, state update chưa flush kịp trên runner CI chậm → flaky, không liên quan đến nội dung commit (file test/component này không đổi ở f1ba7ff).
+- **Cách sửa**: bọc assert alert trong `waitFor` (`await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(...))`); verify file test 3 lần liên tiếp xanh (22/22).
+- **Bằng chứng đã hết lỗi**: `vitest run ReconciliationTable.test.tsx` ×3 PASS 22/22; chờ CI run mới.
+- **Cách phòng tránh lần sau**: mọi assert UI sau handler async (await rpc/fetch) bắt buộc trong `waitFor`, không assert đồng bộ ngay sau `waitFor(mockCalled)` — mock được gọi ≠ state đã flush.
+- **Liên quan**: Plan.md §9 Phase 7 (CI frontend); run 36308309142.
