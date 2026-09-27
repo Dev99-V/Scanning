@@ -680,3 +680,15 @@
 - **Bằng chứng đã hết lỗi**: `tsc -b` exit 0; `oxlint` sạch; `vitest` 40 files/217 tests PASS (mới 6: 3 api + 3 modal); `vite build` OK. Gate `qc_inventory.sh` 10 checks viết xong chờ CI docker chạy (local không có supabase_db_backend).
 - **Cách phòng tránh lần sau**: param RPC mới luôn OPTIONAL ở cuối + DROP overload cũ; test mở modal trong list phải dùng selector unique theo dòng, không dùng title chung.
 - **Liên quan**: Plan.md §7.2/Phase 5 (Bảng đối chiếu) + Phase 8 follow-up; Skills A/B/C; `state.json:pending_contract_changes(rpc_inventory_tag_edit)` — cần `db push` + CI backend-deploy khi merge main.
+
+### [2026-09-27] Reload chờ lâu: tải full 4 bảng từng trang nối tiếp + render đã 100 dòng sẵn
+
+- **Khu vực**: Frontend load đầu kỳ (`lib/pagedFetch.ts` mới + `useScannedData` + `useReferenceMap` + `ReferenceDataTable.load` + `useInventoryCounts`)
+- **Triệu chứng**: user báo reload hệ thống chờ khá lâu; yêu cầu chỉ render 100 dòng + tự tải tiếp khi cuộn ở cả 3 bảng.
+- **Nguyên nhân gốc** (đo trong code): render-100 + cuộn vô hạn + nút tải tiếp ĐÃ có sẵn ở cả 3 bảng (visibleCount/slice) — không phải nguyên nhân. Chờ lâu do tải: full scanned_data + full reference_stock ×2 (map đối chiếu + Bảng 2 tự tải riêng) + full inventory_counts + 300 audit, mỗi bảng đi từng trang 1000 NỐI TIẾP trên wifi kho trễ cao.
+- **Cách sửa** (chỉ frontend, không đổi contract, không cache localStorage):
+  1. Mới `lib/pagedFetch.ts` (`fetchAllPages`): tải các trang theo sóng 4 song song, ghép theo chỉ số trang (không theo thứ tự resolve), dừng ở trang ngắn đầu tiên, trần 100 sóng chống treo; trang lỗi → trả [] (dừng sóng) để caller giữ hành vi cũ.
+  2. Chuyển 4 loader sang dùng chung, giữ nguyên query + ORDER BY ổn định (PK tie-breaker) + khử trùng PK + realtime bù ở caller.
+- **Bằng chứng đã hết lỗi**: `tsc -b` exit 0; `oxlint` sạch; `vitest` 41 files/222 tests PASS (mới `pagedFetch.test.ts` 5 tests: song song + giữ thứ tự + dừng trang ngắn + lan lỗi + trần an toàn; test phân trang 1050 dòng cũ vẫn xanh); `vite build` OK.
+- **Cách phòng tránh lần sau**: mọi vòng lặp `.range()` mới bắt buộc đi qua `fetchAllPages` (sóng song song), không viết while-nối-tiếp; mock test phân trang phải dispatch theo `from` để tương thích sóng song song.
+- **Liên quan**: bài học OFFSET 2026-09-09 (sort ổn định + khử trùng PK giữ nguyên); `state.json:pending_contract_changes(frontend_only_parallel_paged_fetch)`.

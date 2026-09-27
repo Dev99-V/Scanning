@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { resilientSubscribe } from '../lib/realtime';
+import { fetchAllPages } from '../lib/pagedFetch';
 import type { InventoryRow } from '../lib/types';
 
 export function useInventoryCounts() {
@@ -14,27 +15,21 @@ export function useInventoryCounts() {
   const fetchData = useCallback(async () => {
     try {
       const step = 1000;
-      let from = 0;
-      const all: InventoryRow[] = [];
-      while (true) {
+      // Sóng song song (pagedFetch): giữ nguyên query + ORDER BY ổn định,
+      // chỉ đổi từng-trang-nối-tiếp thành sóng 4 song song cho reload nhanh.
+      const { items: all, error: pageError } = await fetchAllPages<InventoryRow>(async (from, to) => {
         const q = supabase
           .from('inventory_counts')
           .select('id,batch_id,stock_code,qty,bin,is_manual,scanned_at')
           .order('scanned_at', { ascending: false })
           .order('id', { ascending: false });
 
-        const res = await (q.range ? q.range(from, from + step - 1) : (q.limit ? q.limit(step) : q));
-        const data = res?.data;
-        const err = res?.error;
-
-        if (err) {
-          setError(err.message);
-          return;
-        }
-        if (!data || (data as unknown[]).length === 0) break;
-        all.push(...(data as InventoryRow[]));
-        if ((data as unknown[]).length < step || !q.range) break;
-        from += step;
+        const res = await (q.range ? q.range(from, to) : (q.limit ? q.limit(step) : q));
+        return { data: (res?.data ?? null) as InventoryRow[] | null, error: res?.error ?? null };
+      }, step);
+      if (pageError) {
+        setError(pageError);
+        return;
       }
 
       const unique: InventoryRow[] = [];

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { resilientSubscribe } from '../lib/realtime';
+import { fetchAllPages } from '../lib/pagedFetch';
 import type { ReferenceRow } from '../lib/types';
 
 export interface SystemNumbers {
@@ -21,31 +22,36 @@ export function useReferenceMap() {
     try {
       const map = new Map<string, SystemNumbers>();
       const step = 1000;
-      let from = 0;
-      while (true) {
-        // Sort ỔN ĐỊNH theo PK: trước đây không có ORDER BY nào nên thứ tự trang
-        // hoàn toàn tùy ý -> trùng/thiếu dòng khi bảng > 1000 dòng (lỗi Bảng 2
-        // stock 3428460401: trùng 1 tag + thiếu 1 tag, im lặng).
-        const { data, error } = await supabase
-          .from('reference_stock')
-          .select('batch_id,stock_code,bin,qty,tag_7055')
-          .order('batch_id', { ascending: true })
-          .range(from, from + step - 1);
-        if (error || !data || data.length === 0) break;
-        for (const r of data as ReferenceRow[]) {
-          if (!r?.batch_id) continue;
-          // TRIM + UPPER BIN (user chốt 2026-09-24: b4 = B4; DB lưu
-          // upper(btrim(bin)) từ migration 20260926). Giữ map tra cứu đồng
-          // nhất với RPC, tránh "b4" vs "B4" báo đỏ giả ở Bảng 1/Bảng 3.
-          map.set(r.batch_id.trim(), {
-            stock_code: r.stock_code,
-            qty: r.qty,
-            bin: (r.bin ?? '').trim().toUpperCase(),
-            tag_7055: Boolean(r.tag_7055),
-          });
-        }
-        if (data.length < step) break;
-        from += step;
+      // Sóng song song (pagedFetch): giữ nguyên query + ORDER BY PK ổn định,
+      // chỉ đổi từng-trang-nối-tiếp thành sóng 4 song song cho reload nhanh.
+      // Map vốn khử trùng theo batch_id nên an toàn sóng song song.
+      // Helper trả trang lỗi thành [] (dừng sóng) → map dựng từ dữ liệu đã
+      // gom được, đúng hành vi cũ (break khi gặp lỗi, realtime bù tiếp).
+      const { items: all } = await fetchAllPages<ReferenceRow>(
+        async (from, to) => {
+          // Sort ỔN ĐỊNH theo PK: trước đây không có ORDER BY nào nên thứ tự trang
+          // hoàn toàn tùy ý -> trùng/thiếu dòng khi bảng > 1000 dòng (lỗi Bảng 2
+          // stock 3428460401: trùng 1 tag + thiếu 1 tag, im lặng).
+          const res = await supabase
+            .from('reference_stock')
+            .select('batch_id,stock_code,bin,qty,tag_7055')
+            .order('batch_id', { ascending: true })
+            .range(from, to);
+          return { data: (res?.data ?? null) as ReferenceRow[] | null, error: res?.error ?? null };
+        },
+        step,
+      );
+      for (const r of all) {
+        if (!r?.batch_id) continue;
+        // TRIM + UPPER BIN (user chốt 2026-09-24: b4 = B4; DB lưu
+        // upper(btrim(bin)) từ migration 20260926). Giữ map tra cứu đồng
+        // nhất với RPC, tránh "b4" vs "B4" báo đỏ giả ở Bảng 1/Bảng 3.
+        map.set(r.batch_id.trim(), {
+          stock_code: r.stock_code,
+          qty: r.qty,
+          bin: (r.bin ?? '').trim().toUpperCase(),
+          tag_7055: Boolean(r.tag_7055),
+        });
       }
       setByBatch(map);
     } finally {

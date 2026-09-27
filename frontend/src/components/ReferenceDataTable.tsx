@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { UsePresenceApi } from '../hooks/usePresence';
 import { table2RowKey } from '../hooks/presenceHelpers';
 import { resilientSubscribe } from '../lib/realtime';
+import { fetchAllPages } from '../lib/pagedFetch';
 import { smoothScrollToElementById } from '../lib/smoothScroll';
 import { resolveDuplicate, submitScan } from '../lib/scanApi';
 import { downloadReferenceSplitExcel } from '../lib/exportExcel';
@@ -599,9 +600,9 @@ export default function ReferenceDataTable({
     async function load() {
       setLoading(true);
       const step = 1000;
-      let from = 0;
-      const all: ReferenceLine[] = [];
-      while (!cancelled) {
+      // Sóng song song (pagedFetch): giữ nguyên query + ORDER BY ổn định,
+      // chỉ đổi từng-trang-nối-tiếp thành sóng 4 song song cho reload nhanh.
+      const { items: all, error: pageError } = await fetchAllPages<ReferenceLine>(async (from, to) => {
         // Sort ỔN ĐỊNH bắt buộc: batch_id (PK) làm tie-breaker sau stock_code.
         // ORDER BY stock_code đơn lẻ + phân trang OFFSET từng gây trùng 1 tag +
         // thiếu 1 tag ở stock 3428460401 (nhóm ties straddle biên trang 1000):
@@ -612,15 +613,14 @@ export default function ReferenceDataTable({
           .order('stock_code', { ascending: true })
           .order('batch_id', { ascending: true });
 
-        const res = await (q.range ? q.range(from, from + step - 1) : q);
-        const data = res?.data;
-        const error = res?.error;
-        if (cancelled || error || !data || (data as unknown[]).length === 0) break;
-        all.push(...(data as ReferenceLine[]));
-        if ((data as unknown[]).length < step || !q.range) break;
-        from += step;
-      }
+        const res = await (q.range ? q.range(from, to) : q);
+        return { data: (res?.data ?? null) as ReferenceLine[] | null, error: res?.error ?? null };
+      }, step);
       if (cancelled) return;
+      if (pageError) {
+        setLoading(false);
+        return;
+      }
       // Khử trùng phòng thủ theo PK: nếu backend vẫn trả trùng (ghi đồng thời
       // giữa 2 lần fetch trang làm lệch OFFSET), UI không bao giờ render 2 dòng
       // cùng batch_id một cách im lặng.
