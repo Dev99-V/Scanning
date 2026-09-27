@@ -157,9 +157,9 @@ describe('InventoryTable', () => {
         onChanged={onChanged}
       />,
     );
-    fireEvent.click(screen.getByLabelText('Chỉnh sửa số lượng kiểm kê TAG2'));
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa lượt kiểm kê TAG2'));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Chỉnh Sửa Số Lượng & Vị Trí Kiểm Kê')).toBeInTheDocument();
+    expect(screen.getByText('Chỉnh Sửa Lượt Kiểm Kê')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Số lượng kiểm kê mới'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('Vị trí Bin kiểm kê mới'), { target: { value: 'BIN_NEW' } });
@@ -184,7 +184,7 @@ describe('InventoryTable', () => {
         onOpenScan={() => {}}
       />,
     );
-    fireEvent.click(screen.getByLabelText('Chỉnh sửa số lượng kiểm kê TAG2'));
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa lượt kiểm kê TAG2'));
 
     fireEvent.change(screen.getByLabelText('Số lượng kiểm kê mới'), { target: { value: '0' } });
     fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
@@ -209,7 +209,7 @@ describe('InventoryTable', () => {
         onChanged={onChanged}
       />,
     );
-    fireEvent.click(screen.getByLabelText('Chỉnh sửa số lượng kiểm kê TAG2'));
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa lượt kiểm kê TAG2'));
     fireEvent.change(screen.getByLabelText('Số lượng kiểm kê mới'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('Vị trí Bin kiểm kê mới'), { target: { value: 'b4' } });
     fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
@@ -237,5 +237,81 @@ describe('InventoryTable', () => {
       el.getAttribute('data-testid'),
     );
     expect(ids).toEqual(['inventory-row-s1', 'inventory-row-d1', 'inventory-row-d2']);
+  });
+
+  it('bấm ô TAG ID mở modal sửa và đổi TAG gửi p_new_batch_id', async () => {
+    const onChanged = vi.fn();
+    render(
+      <InventoryTable
+        inventoryRows={inventoryRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys}
+        onOpenScan={() => {}}
+        onChanged={onChanged}
+      />,
+    );
+    // Ô TAG ID là nút bấm mở modal (mở qua nút sửa dòng TAG2 cho xác định)
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa lượt kiểm kê TAG2'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // Ô TAG ID trong bảng cũng là nút bấm
+    expect(screen.getAllByTitle('Bấm để chỉnh sửa TAG ID kiểm kê')).toHaveLength(2);
+    expect(screen.getByLabelText('TAG ID kiểm kê mới')).toHaveValue('TAG2');
+
+    fireEvent.change(screen.getByLabelText('TAG ID kiểm kê mới'), { target: { value: 'TAG1' } });
+    // Gợi ý tra cứu nguồn hiện mã hàng của TAG mới
+    expect(screen.getByText(/Có trong nguồn: Mã hàng ST_A/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+
+    await waitFor(() =>
+      expect(mockRpc).toHaveBeenCalledWith('update_inventory_row', {
+        p_id: 'i2',
+        p_new_qty: 3,
+        p_new_bin: 'BIN_X',
+        p_new_batch_id: 'TAG1',
+      }),
+    );
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('TAG trống thì báo lỗi và không gọi RPC', () => {
+    render(
+      <InventoryTable
+        inventoryRows={inventoryRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys}
+        onOpenScan={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa lượt kiểm kê TAG2'));
+    fireEvent.change(screen.getByLabelText('TAG ID kiểm kê mới'), { target: { value: '   ' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+    expect(screen.getByRole('alert')).toHaveTextContent('TAG ID');
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('TAG trùng dòng khác → báo chống trùng, TAG ngoài nguồn → báo nguồn (không đóng modal)', async () => {
+    render(
+      <InventoryTable
+        inventoryRows={inventoryRows}
+        scannedRows={scannedRows}
+        systemByBatch={sys}
+        onOpenScan={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('Chỉnh sửa lượt kiểm kê TAG2'));
+
+    // Trùng cứng
+    mockRpc.mockResolvedValueOnce({ data: { ok: false, error: 'duplicate_batch_id' }, error: null });
+    fireEvent.change(screen.getByLabelText('TAG ID kiểm kê mới'), { target: { value: 'TAG1' } });
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('dòng kiểm kê khác'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Ngoài nguồn
+    mockRpc.mockResolvedValueOnce({ data: { ok: false, error: 'not_in_reference' }, error: null });
+    fireEvent.change(screen.getByLabelText('TAG ID kiểm kê mới'), { target: { value: 'TAG_LẠ' } });
+    expect(screen.getByText(/không có trong nguồn/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Bảng 2'));
   });
 });

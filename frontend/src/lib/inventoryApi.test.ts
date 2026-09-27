@@ -42,4 +42,37 @@ describe('inventoryApi', () => {
     const res = await updateInventoryRow('id2', 7, 'BIN_X');
     expect(res).toEqual({ ok: false, message: 'mất mạng' });
   });
+
+  it('updateInventoryRow đổi TAG → gửi p_new_batch_id', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: true }, error: null });
+    await expect(updateInventoryRow('id3', 5, 'BIN_Y', 'Anh A', 'TAG_NEW')).resolves.toEqual({ ok: true });
+    expect(mockRpc).toHaveBeenCalledWith('update_inventory_row', {
+      p_id: 'id3',
+      p_new_qty: 5,
+      p_new_bin: 'BIN_Y',
+      p_actor_name: 'Anh A',
+      p_new_batch_id: 'TAG_NEW',
+    });
+  });
+
+  it('updateInventoryRow không đổi TAG → không gửi p_new_batch_id (tương thích ngược)', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: true }, error: null });
+    await updateInventoryRow('id3', 5, 'BIN_Y');
+    expect(mockRpc).toHaveBeenCalledWith('update_inventory_row', {
+      p_id: 'id3',
+      p_new_qty: 5,
+      p_new_bin: 'BIN_Y',
+    });
+  });
+
+  it('updateInventoryRow lỗi duplicate/not_in_reference → { ok:false, code } để UI rẽ nhánh', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: false, error: 'duplicate_batch_id' }, error: null });
+    const dup = await updateInventoryRow('id3', 5, 'BIN_Y', null, 'TAG_DUP');
+    expect(dup).toEqual({ ok: false, message: 'duplicate_batch_id', code: 'duplicate_batch_id' });
+
+    mockRpc.mockResolvedValue({ data: { ok: false, error: 'not_in_reference' }, error: null });
+    const out = await updateInventoryRow('id3', 5, 'BIN_Y', null, 'TAG_LA');
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.code).toBe('not_in_reference');
+  });
 });

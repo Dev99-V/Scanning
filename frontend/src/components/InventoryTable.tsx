@@ -39,9 +39,12 @@ export default function InventoryTable({
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
   // Modal chỉnh sửa lượt kiểm kê (giống modal sửa Bảng 1/Bảng 2):
-  // Quy tắc nghiệp vụ: Bảng 3 chỉ được sửa SL KK và Bin KK
-  // (Tag ID / Stock Code không được sửa — hiển thị read-only).
+  // Quy tắc nghiệp vụ (user chốt 2026-09-27): Bảng 3 được sửa TAG ID + SL KK
+  // + Bin KK (Mã hàng tự lookup từ nguồn theo TAG mới). TAG mới phải có trong
+  // nguồn (Bảng 2) và chưa trùng dòng kiểm kê khác — RPC chặn cứng 2 trường
+  // hợp này, frontend rẽ nhánh theo error.code.
   const [editingRow, setEditingRow] = useState<InventoryRow | null>(null);
+  const [editBatch, setEditBatch] = useState('');
   const [editQty, setEditQty] = useState('');
   const [editBin, setEditBin] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -118,6 +121,7 @@ export default function InventoryTable({
 
   function openEditModal(r: InventoryRow) {
     setEditingRow(r);
+    setEditBatch(r.batch_id);
     setEditQty(String(r.qty));
     setEditBin(r.bin);
     setEditNotice(null);
@@ -130,6 +134,11 @@ export default function InventoryTable({
   async function handleConfirmEdit(e?: React.FormEvent) {
     if (e) e.preventDefault();
     if (!editingRow) return;
+    const cleanBatch = editBatch.trim();
+    if (!cleanBatch) {
+      setEditNotice('⚠️ Vui lòng nhập TAG ID kiểm kê hợp lệ (không được để trống).');
+      return;
+    }
     const cleanQty = Number(editQty);
     if (!Number.isFinite(cleanQty) || cleanQty <= 0) {
       setEditNotice('⚠️ Số lượng kiểm kê phải là một số hợp lệ (> 0).');
@@ -142,15 +151,43 @@ export default function InventoryTable({
     }
     setIsSavingEdit(true);
     setEditNotice(null);
-    const res = await updateInventoryRow(editingRow.id, cleanQty, cleanBin, actorName);
+    // Chỉ gửi p_new_batch_id khi TAG đổi để caller cũ (không đổi TAG) giữ
+    // nguyên contract; RPC tự no-op khi TAG mới trim-giống TAG cũ.
+    const batchChanged = cleanBatch !== editingRow.batch_id.trim();
+    const res = await updateInventoryRow(
+      editingRow.id,
+      cleanQty,
+      cleanBin,
+      actorName,
+      batchChanged ? cleanBatch : undefined,
+    );
     setIsSavingEdit(false);
     if (!res.ok) {
+      // Rẽ nhánh theo error.code (Skills C), có fallback parse message cho
+      // RPC cũ/cloud chưa deploy migration mới.
+      const code = res.code ?? res.message;
+      if (code.includes('duplicate_batch_id')) {
+        setEditNotice('⚠️ TAG ID đã có ở dòng kiểm kê khác trong Bảng 3 — không lưu (chống trùng cứng). Hãy sửa hoặc xóa dòng cũ trước.');
+        return;
+      }
+      if (code.includes('not_in_reference')) {
+        setEditNotice('⚠️ TAG ID không có trong nguồn (Bảng 2) — chỉ được chọn TAG có trong Bảng 2.');
+        return;
+      }
+      if (code.includes('batch_id_required')) {
+        setEditNotice('⚠️ Vui lòng nhập TAG ID kiểm kê hợp lệ (không được để trống).');
+        return;
+      }
       setEditNotice(`❌ Lỗi cập nhật: ${res.message}`);
       return;
     }
     onChanged?.();
     closeEditModal();
   }
+
+  // Tra cứu TAG đang gõ trong nguồn (Bảng 2) để gợi ý trước khi lưu —
+  // giống luồng tra cứu tức thì của modal sửa Bảng 1.
+  const editBatchSys = editingRow ? systemByBatch.get(editBatch.trim()) : undefined;
 
   const displayedRows = filteredRows.slice(0, visibleCount);
 
@@ -243,8 +280,17 @@ export default function InventoryTable({
                 return (
                   <tr key={r.id} data-testid={`inventory-row-${r.id}`} className="hover:bg-white/5 transition-colors">
                     <td className="px-3 py-2.5 font-bold text-slate-200">{stockCode}</td>
-                    {/* Tag ID: read-only (quy tắc Bảng 3 chỉ sửa SL + Bin KK) */}
-                    <td className="px-3 py-2.5 font-bold text-cyan-300">{r.batch_id}</td>
+                    {/* Tag ID: bấm để sửa (mở modal chỉnh sửa lượt kiểm kê) */}
+                    <td className="px-3 py-2.5 font-bold text-cyan-300">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(r)}
+                        title="Bấm để chỉnh sửa TAG ID kiểm kê"
+                        className="hover:underline transition font-bold"
+                      >
+                        {r.batch_id}
+                      </button>
+                    </td>
                     {/* Bin KK (bấm để sửa) */}
                     <td className="px-3 py-2.5 text-right text-white">
                       <button
@@ -289,8 +335,8 @@ export default function InventoryTable({
                         <button
                           type="button"
                           onClick={() => openEditModal(r)}
-                          title={`Chỉnh sửa số lượng kiểm kê ${r.batch_id}`}
-                          aria-label={`Chỉnh sửa số lượng kiểm kê ${r.batch_id}`}
+                          title={`Chỉnh sửa lượt kiểm kê ${r.batch_id}`}
+                          aria-label={`Chỉnh sửa lượt kiểm kê ${r.batch_id}`}
                           className="rounded-lg border border-transparent p-1.5 text-slate-400 transition hover:border-amber-500/40 hover:bg-amber-950/60 hover:text-amber-300 active:scale-95"
                         >
                           ✏️
@@ -433,10 +479,10 @@ export default function InventoryTable({
                 <span className="text-2xl">✏️</span>
                 <div>
                   <h3 id="edit-inventory-title" className="font-cyber text-sm font-bold uppercase tracking-wider text-white">
-                    Chỉnh Sửa Số Lượng &amp; Vị Trí Kiểm Kê
+                    Chỉnh Sửa Lượt Kiểm Kê
                   </h3>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
-                    Chỉ sửa SL và Bin KK do đếm hoặc nhập nhầm (Tag / Mã hàng không đổi)
+                    Sửa TAG ID (phải có trong Bảng 2) + SL và Bin KK do quét/đếm nhầm
                   </p>
                 </div>
               </div>
@@ -452,10 +498,10 @@ export default function InventoryTable({
 
             {/* Form chỉnh sửa */}
             <form onSubmit={handleConfirmEdit} className="my-4 space-y-4 text-xs">
-              {/* Thông tin lượt kiểm kê hiện tại (Tag / Bin / Mã hàng read-only) */}
+              {/* Thông tin lượt kiểm kê hiện tại (read-only để đối chiếu) */}
               <div className="space-y-1.5 rounded-2xl border border-white/10 bg-black/60 p-3.5 font-mono text-[11px]">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Tag ID:</span>
+                  <span className="text-slate-400">Tag ID hiện tại:</span>
                   <span className="font-bold text-slate-200">{editingRow.batch_id}</span>
                 </div>
                 <div className="flex justify-between">
@@ -472,7 +518,34 @@ export default function InventoryTable({
                 </div>
               </div>
 
-              {/* Ô nhập Số lượng KK + Vị trí Bin KK mới — 2 trường duy nhất được sửa */}
+              {/* Ô nhập TAG ID mới — phải có trong nguồn (Bảng 2) */}
+              <div>
+                <label htmlFor="edit-inventory-batch-input" className="block text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">
+                  TAG ID mới:
+                </label>
+                <input
+                  id="edit-inventory-batch-input"
+                  aria-label="TAG ID kiểm kê mới"
+                  type="text"
+                  value={editBatch}
+                  onChange={(e) => setEditBatch(e.target.value)}
+                  placeholder="Nhập TAG ID có trong Bảng 2..."
+                  className="w-full rounded-xl border border-amber-500/40 bg-black/50 p-2.5 font-mono text-xs font-bold text-amber-300 placeholder:text-slate-600 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+                {editBatch.trim() && editBatch.trim() !== editingRow.batch_id.trim() && (
+                  editBatchSys ? (
+                    <p className="mt-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/60 p-2 text-[11px] text-emerald-200">
+                      ✓ Có trong nguồn: Mã hàng {editBatchSys.stock_code} — SL HT {String(editBatchSys.qty)} — Bin HT {editBatchSys.bin} (lưu sẽ tự đồng bộ Mã hàng).
+                    </p>
+                  ) : (
+                    <p className="mt-1.5 rounded-lg border border-rose-500/40 bg-rose-950/60 p-2 text-[11px] text-rose-200">
+                      ⚠️ TAG không có trong nguồn (Bảng 2) — sẽ bị chặn khi lưu.
+                    </p>
+                  )
+                )}
+              </div>
+
+              {/* Ô nhập Số lượng KK + Vị trí Bin KK mới */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="edit-inventory-qty-input" className="block text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">

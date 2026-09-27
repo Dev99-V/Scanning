@@ -668,3 +668,15 @@
 - **Bằng chứng đã hết lỗi**: gate chạy thật trên Postgres 15 docker (`RESULT: QC_INVENTORY PASS` 7/7 — DB stub roles/auth vì không có full Supabase stack, `auth.uid()` NULL); frontend `tsc` sạch, `oxlint` sạch, `vitest` 40 files/196 tests PASS, `vite build` OK.
 - **Cách phòng tránh lần sau**: RPC mới bắt buộc kèm audit + gate ngay trong cùng đợt (không để debt); không dùng `window.confirm`; logic gọi RPC dùng chung qua `lib/*Api.ts`.
 - **Liên quan**: `state.json:pending_contract_changes(rpc_inventory_audit_plus_binKK, gate_qc_inventory, frontend_debt_cleanup_bang3)`; db push cloud vẫn pending (thiếu SUPABASE_DB_PASSWORD) — 7 migration chờ.
+
+### [2026-09-27] Thêm sửa TAG ID ở Bảng 3 (trước đây khóa Tag/Mã hàng)
+
+- **Khu vực**: migration `20260927090000_update_inventory_row_tag_edit.sql` + gate `qc_inventory.sh` (9→10 checks) + `lib/inventoryApi.ts` + `InventoryTable.tsx` (+ 2 test files)
+- **Yêu cầu người dùng**: Bảng 3 được sửa TAG ID; chốt 3 luật: (1) chặn cứng TAG ngoài nguồn → `not_in_reference`; (2) chặn cứng trùng TAG nội bộ Bảng 3 → `duplicate_batch_id` (giống submit 2026-09-24, kèm advisory lock `inventory_submit:`); (3) TAG mới có trong nguồn thì auto lookup `stock_code` từ `reference_stock` (giống Bảng 1 sửa TAG).
+- **Cách sửa**:
+  1. DB: `update_inventory_row` thêm `p_new_batch_id OPTIONAL` cuối cùng (NULL = giữ TAG cũ, tương thích ngược caller cũ); DROP overload cũ + GRANT lại; lock TAG mới trước SELECT; audit `edit/kind=inventory_update` ghi đủ batch cũ→mới + stock cũ→mới.
+  2. Frontend: `inventoryApi.updateInventoryRow` thêm param `newBatchId` optional + trả `code` để rẽ nhánh theo `error.code` (Skills C); modal sửa Bảng 3 thêm ô TAG ID + hint tra cứu nguồn live (xanh khi có trong Bảng 2, đỏ khi ngoài nguồn); ô TAG trong bảng bấm được để mở modal.
+  3. Test `getByTitle` trùng 2 dòng → chuyển sang mở modal qua `aria-label` dòng xác định + assert `getAllByTitle` đủ 2 nút (bài học: title không unique khi render list).
+- **Bằng chứng đã hết lỗi**: `tsc -b` exit 0; `oxlint` sạch; `vitest` 40 files/217 tests PASS (mới 6: 3 api + 3 modal); `vite build` OK. Gate `qc_inventory.sh` 10 checks viết xong chờ CI docker chạy (local không có supabase_db_backend).
+- **Cách phòng tránh lần sau**: param RPC mới luôn OPTIONAL ở cuối + DROP overload cũ; test mở modal trong list phải dùng selector unique theo dòng, không dùng title chung.
+- **Liên quan**: Plan.md §7.2/Phase 5 (Bảng đối chiếu) + Phase 8 follow-up; Skills A/B/C; `state.json:pending_contract_changes(rpc_inventory_tag_edit)` — cần `db push` + CI backend-deploy khi merge main.

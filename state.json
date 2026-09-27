@@ -186,6 +186,12 @@
       "detail": "User yêu cầu 2026-09-25: nút Export Excel ở Bảng 2, xuất 2 sheet — sheet 1 dòng đã khớp (nút 🔍), sheet 2 dữ liệu dư (nút 📦). Lib exportExcel thêm REFERENCE_SPLIT_HEADER + buildReferenceSplitWorkbook/downloadReferenceSplitExcel (2 sheet '🔍 Da khop' / '📦 Du lieu du', ép text @ giữ số 0 đầu). ReferenceDataTable thêm nút footer data-testid btn-export-table2-split, label động theo matchedCount/excessCount, disable khi trống. Verify 2026-09-25: tsc PASS, lint PASS, vitest 211 PASS, vite build OK.",
       "status": "implemented_2026_09_25",
       "date": "2026-09-25"
+    },
+    {
+      "type": "rpc_inventory_tag_edit",
+      "detail": "User yêu cầu 2026-09-27: Bảng 3 được sửa TAG ID (trước đây khóa, chỉ sửa SL+Bin KK). Chốt: (1) chặn cứng TAG ngoài nguồn → RPC trả not_in_reference, frontend báo và không lưu; (2) chặn cứng trùng TAG nội bộ Bảng 3 → duplicate_batch_id (giống submit 2026-09-24, kèm advisory lock inventory_submit); (3) TAG mới có trong nguồn thì auto lookup stock_code từ reference_stock (giống Bảng 1). Migration 20260927090000_update_inventory_row_tag_edit.sql: update_inventory_row thêm p_new_batch_id OPTIONAL (NULL=giữ cũ, tương thích ngược), DROP overload cũ + GRANT lại. Frontend InventoryTable modal thêm ô TAG ID + rẽ nhánh error.code. Cần supabase db push lên cloud (CI backend-deploy khi merge main).",
+      "status": "implemented_2026_09_27_pending_deploy",
+      "date": "2026-09-27"
     }
   ],
   "decisions_resolved_layout_2026_09_04": {
