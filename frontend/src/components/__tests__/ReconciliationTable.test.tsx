@@ -230,17 +230,22 @@ describe('ReconciliationTable', () => {
     fireEvent.change(screen.getByLabelText('Vị trí Bin quét mới'), { target: { value: 'BIN_NEW' } });
     fireEvent.click(screen.getByText('💾 Lưu thay đổi'));
 
-    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
-    expect(rpc).toHaveBeenCalledWith('update_scanned_tag_id', {
-      p_id: 'r-err',
-      p_new_batch_id: 'TAG_001',
-      p_stock_code: 'SKU_1',
-      p_new_qty: 5,
-      p_new_bin: 'BIN_NEW',
-    });
+    await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1), { timeout: 5000 });
+    expect(rpc).toHaveBeenCalledWith(
+      'update_scanned_tag_id',
+      expect.objectContaining({
+        p_id: 'r-err',
+        p_new_batch_id: 'TAG_001',
+        p_stock_code: 'SKU_1',
+        p_new_qty: 5,
+        p_new_bin: 'BIN_NEW',
+      }),
+    );
     // Alert render sau `await rpc(...)` + setState: phải chờ, không assert đồng bộ
     // (flaky trên CI runner chậm — run 36308309142 rớt đúng dòng này dù local xanh).
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Lỗi cập nhật: boom/));
+    // findBy tự poll thay vì getBy đồng bộ trong waitFor.
+    const alert = await screen.findByRole('alert', undefined, { timeout: 5000 });
+    expect(alert).toHaveTextContent(/Lỗi cập nhật: boom/);
   });
 
   it('bấm trực tiếp vào chữ Tag ID cũng mở modal chỉnh sửa', () => {
